@@ -19,7 +19,7 @@
   </div>
 </template>
 
-<script setup lang="tsx" name="VueAutoDraggable">
+<script setup lang="tsx">
 import {
   type CSSProperties,
   computed,
@@ -32,7 +32,8 @@ import type {
   ExtendsAutoDraggable,
   HandlesSet,
   AutoDraggableProps,
-} from './type';
+  VueDraggableEmits,
+} from '@/type';
 import {
   figureFinalValue,
   setValUnit,
@@ -41,8 +42,9 @@ import {
   removeEvent,
   restrictToBounds,
 } from './utils/util';
-import _ from 'lodash';
+import { cloneDeep } from 'lodash-es';
 import Decimal from 'decimal.js';
+
 const props = withDefaults(defineProps<AutoDraggableProps<any>>(), {
   theme: '#409EFD', // 默认主题颜色
   inActiveColor: '#666666',
@@ -69,25 +71,7 @@ const props = withDefaults(defineProps<AutoDraggableProps<any>>(), {
   handles: () => ['tl', 'tm', 'tr', 'mr', 'br', 'bm', 'bl', 'ml'],
 });
 
-const emit = defineEmits<{
-  (event: 'update:modelValue', value: ExtendsAutoDraggable): void;
-  (event: 'drag-start', e: MouseEvent, value: ExtendsAutoDraggable): void;
-  (
-    event: 'drag-stop',
-    e: MouseEvent,
-    oldValue: ExtendsAutoDraggable,
-    newValue: ExtendsAutoDraggable
-  ): void;
-  (event: 'resize-start', e: MouseEvent, value: ExtendsAutoDraggable): void;
-  (
-    event: 'resize-stop',
-    e: MouseEvent,
-    oldValu: ExtendsAutoDraggable,
-    newValue: ExtendsAutoDraggable
-  ): void;
-  (event: 'active', value: ExtendsAutoDraggable): void;
-  (event: 'inactive', value: ExtendsAutoDraggable): void;
-}>();
+const emit = defineEmits<VueDraggableEmits>();
 
 const state = reactive<{
   beforeClickConfig: ExtendsAutoDraggable;
@@ -204,7 +188,7 @@ watch(
   (n) => {
     state.active = n;
     if (!n) {
-      emit('inactive', _.cloneDeep(autoDraggable.value));
+      emit('inactive', cloneDeep(autoDraggable.value));
     }
   }
 );
@@ -272,8 +256,8 @@ const mousedownHandler = (
   state.initX = clientX; // 记录鼠标坐标X
   state.initY = clientY; // 记录鼠标坐标Y
   // 获取当前绑定元素的配置
-  state.beforeClickConfig = _.cloneDeep(autoDraggable.value);
-  emit('active', _.cloneDeep(autoDraggable.value));
+  state.beforeClickConfig = cloneDeep(autoDraggable.value);
+  emit('active', cloneDeep(autoDraggable.value));
   if (props.draggable && !handle) {
     emit('drag-start', event, state.beforeClickConfig);
   }
@@ -537,7 +521,7 @@ const mouseupHandler = (event: MouseEvent) => {
       'drag-stop',
       event,
       state.beforeClickConfig,
-      _.cloneDeep(autoDraggable.value)
+      cloneDeep(autoDraggable.value)
     );
   }
   if (props.resizeable && state.handle) {
@@ -545,7 +529,7 @@ const mouseupHandler = (event: MouseEvent) => {
       'resize-stop',
       event,
       state.beforeClickConfig,
-      _.cloneDeep(autoDraggable.value)
+      cloneDeep(autoDraggable.value)
     );
   }
   !props.active && (state.active = false);

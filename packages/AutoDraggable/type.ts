@@ -1,5 +1,3 @@
-import { PropType } from 'vue';
-
 export interface AutoDraggable {
   left: number | string;
   top: number | string;
@@ -34,6 +32,26 @@ export interface AutoDraggableProps<T> {
   active: boolean; // 该组件是否活跃
   disabledUserSelect?: boolean; // 是否开启选择文本，默认false
   handles?: Array<HandlesSet[number]>; // 控制触点，默认全选
+}
+
+export interface VueDraggableEmits {
+  (event: 'update:modelValue', value: ExtendsAutoDraggable): void;
+  (event: 'drag-start', e: MouseEvent, value: ExtendsAutoDraggable): void;
+  (
+    event: 'drag-stop',
+    e: MouseEvent,
+    oldValue: ExtendsAutoDraggable,
+    newValue: ExtendsAutoDraggable
+  ): void;
+  (event: 'resize-start', e: MouseEvent, value: ExtendsAutoDraggable): void;
+  (
+    event: 'resize-stop',
+    e: MouseEvent,
+    oldValu: ExtendsAutoDraggable,
+    newValue: ExtendsAutoDraggable
+  ): void;
+  (event: 'active', value: ExtendsAutoDraggable): void;
+  (event: 'inactive', value: ExtendsAutoDraggable): void;
 }
 
 export type HandlesSet = ['tl', 'tm', 'tr', 'mr', 'br', 'bm', 'bl', 'ml'];
