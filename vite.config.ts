@@ -13,7 +13,6 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    vueSetupExtend(),
     dts({
       outDir: resolvePath('lib'),
       include: [resolvePath('packages')],

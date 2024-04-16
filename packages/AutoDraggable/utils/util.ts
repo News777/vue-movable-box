@@ -1,4 +1,21 @@
+import type { ElementUnit } from '@/type';
 import Decimal from 'decimal.js';
+
+export function judgeUnitHaveExist(
+  value: string | number | undefined | null,
+  unit: ElementUnit,
+  defaultType: 'string' | 'number' = 'string'
+) {
+  if (value && String(value).endsWith(unit)) {
+    return fillUnitToValue(value, unit);
+  } else {
+    return defaultType === 'number' ? 0 : '';
+  }
+}
+
+export function fillUnitToValue(value: string | number, unit: ElementUnit) {
+  return value + unit;
+}
 
 export const valIsNaN = (
   value: number | string | undefined,
