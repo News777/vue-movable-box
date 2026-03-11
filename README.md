@@ -1,93 +1,253 @@
+# VueMovableBox
 
-# AutoDraggable Vue Component
+✨ 一个功能强大的 Vue 3 拖拽和调整大小组件
 
-VueAutoDraggable 是一个 Vue 3 组件，提供拖拽和缩放功能，可以自定义多种属性以适应不同需求。此组件使用 TypeScript 并结合 Vite 5 进行构建。
+[![npm version](https://img.shields.io/npm/v/vue-movable-box.svg)](https://www.npmjs.com/package/vue-movable-box)
+[![License](https://img.shields.io/github/license/News777/VueDraggable.svg)](LICENSE)
+[![Vue 3](https://img.shields.io/badge/Vue-3.x-green.svg)](https://vuejs.org)
 
 ## 特性
 
-- 可选主题色，默认 `#409EFD`
-- 支持 `px` 和 `%` 两种单位，默认 `px`
-- 自定义缩放比例，默认为 `1`
-- 可以选择是否保留小数，默认不保留
-- 可设置保留小数位数，默认保留两位
-- 可开启或关闭拖拽功能，默认开启
-- 可开启或关闭缩放功能，默认开启
-- 可限制元素移动区域为父元素内，默认开启
-- 可设置活跃状态，默认不活跃
-- 可禁用文本选择，默认不禁用
-- 可自定义控制触点，默认为全套
-
-
-## **Props:**
-
-| Prop                 | Type                                          | Default   | Description                                                    |
-| -------------------- | --------------------------------------------- | --------- | -------------------------------------------------------------- |
-| `theme`              | `string`                                      | `#409EFD` | 主题色                                                         |
-| `inActiveColor`      | `string`                                      |           | 失活颜色                                                       |
-| `unitType`           | `'px' \| '%'`                                 | `'px'`    | 单位                                                           |
-| `scale`              | `number` \| `string`                          | `1`       | 缩放比例                                                       |
-| `isKeepDecimals`     | `boolean`                                     | `false`   | 是否保留小数                                                   |
-| `decimalPlaces`      | `number`                                      | `2`       | 保留几位小数                                                   |
-| `draggable`          | `boolean`                                     | `true`    | 是否可以移动                                                   |
-| `resizeable`         | `boolean`                                     | `true`    | 是否可以缩放                                                   |
-| `limitAreaForParent` | `boolean`                                     | `true`    | 限制元素移动区域为父元素内                                     |
-| `limitAreaClass`     | `string`                                      |           |                                                                |
-| `modelValue`         | `Required<Omit<AutoDraggable, 'zIndex'>> & T` |           | 必填，使用 `AutoDraggable` 像型但省略 `zIndex`，再加上类型 `T` |
-| `maxWidth`           | `number` \| `string`                          |           | 最大宽度                                                       |
-| `maxHeight`          | `number` \| `string`                          |           | 最大高度                                                       |
-| `minWidth`           | `number` \| `string`                          |           | 最小宽度                                                       |
-| `minHeight`          | `number` \| `string`                          |           | 最小高度                                                       |
-| `ratioLock`          | `boolean`                                     |           | 比例锁定                                                       |
-| `active`             | `boolean`                                     |           | 该组件是否活跃                                                 |
-| `disabledUserSelect` | `boolean`                                     | `false`   | 是否开启选择文本                                               |
-| `handles`            | `Array<HandlesSet[number]>`                   |           | 控制触点，默认全选                                             |
-
-
-## **Emits:**
-
-| Event               | Payload                                                                         | Description              |
-| ------------------- | ------------------------------------------------------------------------------- | ------------------------ |
-| `update:modelValue` | `value: ExtendsAutoDraggable`                                                   | 用于更新 `modelValue`    |
-| `drag-start`        | `e: MouseEvent, value: ExtendsAutoDraggable`                                    | 开始拖动时触发           |
-| `drag-stop`         | `e: MouseEvent, oldValue: ExtendsAutoDraggable, newValue: ExtendsAutoDraggable` | 停止拖动时触发           |
-| `resize-start`      | `e: MouseEvent, value: ExtendsAutoDraggable`                                    | 开始调整大小时触发       |
-| `resize-stop`       | `e: MouseEvent, oldValu: ExtendsAutoDraggable, newValue: ExtendsAutoDraggable`  | 调整大小结束时触发       |
-| `active`            | `value: ExtendsAutoDraggable`                                                   | 组件变为活跃状态时触发   |
-| `inactive`          | `value: ExtendsAutoDraggable`                                                   | 组件变为非活跃状态时触发 |
+- 🖱️ **拖拽移动** - 自由拖拽元素位置
+- 📐 **调整大小** - 8个方向调整元素尺寸
+- 📱 **移动端支持** - 完整的触摸事件支持
+- 🔒 **比例锁定** - 保持宽高比缩放
+- 🎨 **自定义主题** - 灵活的主题配置
+- 📏 **单位支持** - 支持 px 和 % 单位
+- 🌍 **边界限制** - 限制在父元素内移动
+- ♿ **完整事件** - 丰富的事件回调
+- 🔧 **TypeScript** - 完整的类型支持
+- 🌐 **RTL 支持** - 从右到左布局支持
 
 ## 安装
 
 ```bash
-pnpm install vue-auto-draggable
+pnpm add vue-movable-box
+# 或
+npm install vue-movable-box
 ```
 
-## 使用方式
-
-在你的 Vue3 应用中如何使用 VueAutoDraggable 组件：
+## 快速开始
 
 ```vue
 <script setup>
-import { ref } from 'vue';
-import { VueAutoDraggable } from 'vue-auto-draggable';
-import 'vue-auto-draggable/css'
+import { ref } from 'vue'
+import { VueMovableBox } from 'vue-movable-box'
+import 'vue-movable-box/css'
 
 const draggableProps = ref({
-  top: 0,
-  left: 0,
+  left: 100,
+  top: 100,
   width: 200,
-  height: 100
-});
-
+  height: 150,
+  zIndex: 1
+})
 </script>
 
 <template>
-  <VueAutoDraggable v-model="draggableProps">
-    <!-- 你的可拖动内容 -->
-  </VueAutoDraggable>
+  <VueMovableBox v-model="draggableProps">
+    <div class="content">
+      拖拽内容区域
+    </div>
+  </VueMovableBox>
 </template>
 ```
 
+## API
 
-## 许可协议
+### Props
 
-VueAutoDraggable 组件遵循 [MIT 许可协议](./LICENSE)。
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `v-model` | `Object` | 必填 | 绑定位置和尺寸 `{ left, top, width, height, zIndex }` |
+| `theme` | `string` | `#409EFD` | 主题色 |
+| `inActiveColor` | `string` | `#666666` | 失活颜色 |
+| `unitType` | `'px' \| '%'` | `'px'` | 单位类型 |
+| `scale` | `number \| string` | `1` | 缩放比例 |
+| `isKeepDecimals` | `boolean` | `false` | 是否保留小数 |
+| `decimalPlaces` | `number` | `2` | 小数位数 |
+| `draggable` | `boolean` | `true` | 是否可拖拽 |
+| `resizeable` | `boolean` | `true` | 是否可调整大小 |
+| `limitAreaForParent` | `boolean` | `true` | 是否限制在父元素内 |
+| `limitAreaClass` | `string` | - | 指定限制区域的 CSS 选择器 |
+| `maxWidth` | `number \| string` | - | 最大宽度 |
+| `maxHeight` | `number \| string` | - | 最大高度 |
+| `minWidth` | `number \| string` | - | 最小宽度 |
+| `minHeight` | `number \| string` | - | 最小高度 |
+| `ratioLock` | `boolean` | `false` | 是否锁定宽高比 |
+| `active` | `boolean` | `false` | 是否激活 |
+| `disabled` | `boolean` | `false` | 是否禁用 |
+| `disabledUserSelect` | `boolean` | `true` | 是否禁用文本选择 |
+| `initRect` | `boolean` | `false` | 只读模式 |
+| `handles` | `string[]` | `['tl','tm','tr','mr','br','bm','bl','ml']` | 可用的调整手柄 |
+
+### Events
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `update:modelValue` | `(value: Object)` | v-model 更新 |
+| `drag-start` | `(event, value)` | 开始拖拽 |
+| `drag-stop` | `(event, oldValue, newValue)` | 停止拖拽 |
+| `resize-start` | `(event, value)` | 开始调整大小 |
+| `resize-stop` | `(event, oldValue, newValue)` | 停止调整大小 |
+| `active` | `(value)` | 组件激活 |
+| `inactive` | `(value)` | 组件停用 |
+| `disabled` | `(value)` | 禁用状态变化 |
+| `dblclick` | `(event)` | 双击事件 |
+| `out-of-bounds` | `(direction)` | 超出边界 |
+| `move` | `(value)` | 移动中（节流） |
+| `resize` | `(value)` | 调整中（节流） |
+
+### Methods
+
+通过 `ref` 访问：
+
+```vue
+<template>
+  <VueMovableBox ref="draggableRef" v-model="config" />
+</template>
+
+<script setup>
+const draggableRef = ref()
+
+// 获取当前配置
+draggableRef.value.getConfig()
+
+// 设置位置
+draggableRef.value.setPosition(100, 100)
+
+// 设置大小
+draggableRef.value.setSize(300, 200)
+
+// 重置
+draggableRef.value.reset()
+
+// 激活
+draggableRef.value.activate()
+
+// 停用
+draggableRef.value.deactivate()
+</script>
+```
+
+## 高级用法
+
+### 自定义主题
+
+```vue
+<VueAutoDraggable 
+  v-model="config"
+  theme="#ff6b6b"
+  inActiveColor="#ccc"
+/>
+```
+
+### 百分比单位
+
+```vue
+<VueAutoDraggable 
+  v-model="config"
+  unitType="%"
+  :maxWidth="100"
+  :maxHeight="100"
+/>
+```
+
+### 比例锁定
+
+```vue
+<VueAutoDraggable 
+  v-model="config"
+  :ratioLock="true"
+/>
+```
+
+### 限制区域
+
+```vue
+<!-- 使用父元素 -->
+<VueAutoDraggable v-model="config" />
+
+<!-- 使用指定区域 -->
+<VueAutoDraggable 
+  v-model="config"
+  limitAreaClass=".custom-area"
+/>
+```
+
+### 事件监听
+
+```vue
+<script setup>
+const handleDragStart = (e, value) => {
+  console.log('开始拖拽', value)
+}
+
+const handleDragStop = (e, oldVal, newVal) => {
+  console.log('停止拖拽', { oldVal, newVal })
+}
+
+const handleOutOfBounds = (direction) => {
+  console.log('超出边界:', direction)
+}
+</script>
+
+<template>
+  <VueAutoDraggable
+    v-model="config"
+    @drag-start="handleDragStart"
+    @drag-stop="handleDragStop"
+    @out-of-bounds="handleOutOfBounds"
+  />
+</template>
+```
+
+## 类型定义
+
+完整 TypeScript 支持，所有类型定义已包含在内：
+
+```ts
+import type { 
+  MovableBox,
+  ExtendsMovableBox, 
+  MovableBoxProps,
+  HandlesSet,
+  MovableBoxExpose
+} from 'vue-movable-box'
+```
+
+## 浏览器支持
+
+- Chrome >= 88
+- Firefox >= 85
+- Safari >= 14
+- Edge >= 88
+
+## 项目结构
+
+```
+VueDraggable/
+├── packages/
+│   └── AutoDraggable/
+│       ├── index.vue        # 主组件
+│       ├── type.ts          # 类型定义
+│       ├── utils/
+│       │   └── util.ts      # 工具函数
+│       └── styles/
+│           └── auto-draggable.scss
+├── dev/                     # 开发示例
+├── package.json
+└── vite.config.ts
+```
+
+## 许可证
+
+MIT License - 见 [LICENSE](LICENSE) 文件
+
+## 贡献
+
+欢迎贡献！请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与开发。
+
+---
+
+Made with ❤️ by News777

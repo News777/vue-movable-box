@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VueAutoDraggable 测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .test-panel {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .test-panel h3 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+    .canvas {
+      position: relative;
+      width: 800px;
+      height: 500px;
+      background: #fafafa;
+      border: 2px dashed #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .test-box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      font-weight: bold;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    .controls button, .controls select, .controls input {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .controls button {
+      background: #409EFD;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .controls button:hover {
+      background: #337ecc;
+    }
+    .controls button.danger {
+      background: #f56c6c;
+    }
+    .controls button.danger:hover {
+      background: #e64545;
+    }
+    .log-panel {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .log-panel .log-item {
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+    .log-panel .log-item:last-child {
+      border-bottom: none;
+    }
+    .log-panel .log-time {
+      color: #888;
+    }
+    .status-list {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    .status-item {
+      padding: 8px 16px;
+      background: #f0f0f0;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .status-item.active {
+      background: #67c23a;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="test-panel">
+      <h3>🧪 VueAutoDraggable 功能测试</h3>
+      <div class="controls">
+        <button @click="toggleActive">切换激活状态</button>
+        <button @click="toggleDisabled">切换禁用状态</button>
+        <button @click="toggleUnit">切换单位: {{ unitType }}</button>
+        <button @click="toggleRatioLock">比例锁定: {{ ratioLock ? '开' : '关' }}</button>
+        <button @click="toggleDrag">拖拽: {{ draggable ? '开' : '关' }}</button>
+        <button @click="toggleResize">缩放: {{ resizeable ? '开' : '关' }}</button>
+        <button class="danger" @click="resetPosition">重置位置</button>
+      </div>
+      <div class="status-list">
+        <div class="status-item" :class="{ active: active }">激活: {{ active }}</div>
+        <div class="status-item" :class="{ active: isDragging }">拖拽中: {{ isDragging }}</div>
+        <div class="status-item" :class="{ active: isResizing }">缩放中: {{ isResizing }}</div>
+        <div class="status-item" :class="{ active: disabled }">禁用: {{ disabled }}</div>
+      </div>
+    </div>
+
+    <div class="test-panel">
+      <h3>📐 画布区域</h3>
+      <div class="canvas" id="testCanvas">
+        <div class="test-box" 
+          style="position: absolute;"
+          :style="boxStyle">
+          拖拽我！
+        </div>
+      </div>
+    </div>
+
+    <div class="test-panel">
+      <h3>📋 事件日志</h3>
+      <div class="log-panel" ref="logPanel">
+        <div v-for="(log, i) in logs" :key="i" class="log-item">
+          <span class="log-time">[{{ log.time }}]</span> {{ log.msg }}
+        </div>
+      </div>
+    </div>
+
+    <div class="test-panel">
+      <h3>📊 当前状态</h3>
+      <pre>{{ modelValue }}</pre>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script>
+    const { createApp, ref, computed, reactive } = Vue;
+
+    // 模拟 VueAutoDraggable 组件的 v-model 双向绑定
+    // 在实际测试中，需要引入编译后的组件
+    const App = {
+      template: document.getElementById('app').innerHTML,
+      setup() {
+        const modelValue = reactive({
+          left: 100,
+          top: 100,
+          width: 200,
+          height: 100,
+          zIndex: 1
+        });
+
+        const active = ref(false);
+        const disabled = ref(false);
+        const unitType = ref('px');
+        const ratioLock = ref(false);
+        const draggable = ref(true);
+        const resizeable = ref(true);
+        const isDragging = ref(false);
+        const isResizing = ref(false);
+        const logs = ref([]);
+        const logPanel = ref(null);
+
+        const boxStyle = computed(() => ({
+          left: modelValue.left + unitType.value,
+          top: modelValue.top + unitType.value,
+          width: modelValue.width + unitType.value,
+          height: modelValue.height + unitType.value,
+          zIndex: modelValue.zIndex
+        }));
+
+        const addLog = (msg) => {
+          const now = new Date();
+          const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+          logs.value.unshift({ time, msg });
+          if (logs.value.length > 50) logs.value.pop();
+        };
+
+        const toggleActive = () => {
+          active.value = !active.value;
+          addLog(`切换激活状态: ${active.value}`);
+        };
+
+        const toggleDisabled = () => {
+          disabled.value = !disabled.value;
+          addLog(`切换禁用状态: ${disabled.value}`);
+        };
+
+        const toggleUnit = () => {
+          unitType.value = unitType.value === 'px' ? '%' : 'px';
+          addLog(`切换单位: ${unitType.value}`);
+        };
+
+        const toggleRatioLock = () => {
+          ratioLock.value = !ratioLock.value;
+          addLog(`切换比例锁定: ${ratioLock.value}`);
+        };
+
+        const toggleDrag = () => {
+          draggable.value = !draggable.value;
+          addLog(`切换拖拽: ${draggable.value}`);
+        };
+
+        const toggleResize = () => {
+          resizeable.value = !resizeable.value;
+          addLog(`切换缩放: ${resizeable.value}`);
+        };
+
+        const resetPosition = () => {
+          modelValue.left = 100;
+          modelValue.top = 100;
+          addLog('重置位置');
+        };
+
+        return {
+          modelValue,
+          active,
+          disabled,
+          unitType,
+          ratioLock,
+          draggable,
+          resizeable,
+          isDragging,
+          isResizing,
+          logs,
+          logPanel,
+          boxStyle,
+          toggleActive,
+          toggleDisabled,
+          toggleUnit,
+          toggleRatioLock,
+          toggleDrag,
+          toggleResize,
+          resetPosition
+        };
+      }
+    };
+
+    // 简单模拟拖拽功能（实际组件会有完整实现）
+    const canvas = document.getElementById('testCanvas');
+    const box = canvas.querySelector('.test-box');
+    let isDragging = false;
+    let startX, startY, startLeft, startTop;
+
+    box.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = parseInt(box.style.left) || 100;
+      startTop = parseInt(box.style.top) || 100;
+      box.style.cursor = 'move';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      box.style.left = (startLeft + dx) + 'px';
+      box.style.top = (startTop + dy) + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+      box.style.cursor = '';
+    });
+
+    createApp(App).mount('#app');
+  </script>
+</body>
+</html>

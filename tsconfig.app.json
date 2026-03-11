@@ -1,6 +1,6 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
-  "include": ["packages/**/*.vue", "packages/**/*.ts", "packages/**/*.d.ts"],
+  "include": ["src/**/*.vue", "src/**/*.ts", "src/**/*.d.ts"],
   "compilerOptions": {
     "composite": true,
     "module": "ESNext",
@@ -8,7 +8,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./packages/AutoDraggable/*"]
+      "@/*": ["./src/*"]
     }
   }
 }

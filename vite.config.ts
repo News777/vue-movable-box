@@ -2,50 +2,50 @@ import { fileURLToPath, URL } from 'node:url';
 import path from 'path';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import dts from 'vite-plugin-dts';
 import vueJsx from '@vitejs/plugin-vue-jsx';
 import vueSetupExtend from 'vite-plugin-vue-setup-extend';
+import dts from 'vite-plugin-dts';
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const resolvePath = (p: string) => path.resolve(__dirname, p);
-// https://vitejs.dev/config/
+
 export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
     vueSetupExtend(),
     dts({
-      outDir: resolvePath('lib'),
-      include: [resolvePath('packages')],
+      insertTypesEntry: true,
       cleanVueFileName: true,
-      tsconfigPath: resolvePath('tsconfig.json'),
+      include: ['src/index.ts', 'src/types/'],
+      exclude: ['src/**/*.vue'],
+      outDir: 'lib',
     }),
   ],
   resolve: {
     alias: {
-      '@': resolvePath('packages/AutoDraggable'),
+      '@': resolvePath('src'),
     },
   },
   build: {
     outDir: resolvePath('lib'),
+    emptyOutDir: true,
     lib: {
-      entry: resolvePath('packages/index.ts'), // 你的插件入口文件
-      name: 'VueAutoDraggable',
-      fileName: (format) => `vue-auto-draggable.${format}.js`,
+      entry: resolvePath('src/index.ts'),
+      name: 'VueMovableBox',
+      fileName: (format) => `vue-movable-box.${format}.js`,
     },
     rollupOptions: {
-      // 确保外部化处理那些你不想打包进库的依赖
-      external: ['vue'],
+      external: ['vue', 'decimal.js'],
       output: {
-        // 为了 Vue 插件，通常你想打包为 UMD
         globals: {
-          vue: 'vue',
+          vue: 'Vue',
+          'decimal.js': 'Decimal',
         },
-        // 配置 CSS 文件的生成名称
-        // 这会影响所有 chunk 的名称，包括 JavaScript 和其他资源
-        assetFileNames: ({ name }) => {
-          if (/\.(css|less|scss)$/.test(name ?? '')) {
-            return 'css/VueAutoDraggable.[ext]';
+        assetFileNames: (assetInfo) => {
+          const name = assetInfo.name || '';
+          if (/\.(css|less|scss)$/.test(name)) {
+            return 'css/VueMovableBox.[ext]';
           }
           return '[name].[hash].[ext]';
         },

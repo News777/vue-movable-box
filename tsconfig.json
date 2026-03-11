@@ -14,16 +14,16 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./packages/AutoDraggable/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": [
-    "packages/**/*.vue",
-    "packages/**/*.ts",
-    "packages/**/*.d.ts",
-    "dev/**/*.vue",
-    "dev/**/*.ts",
-    "dev/**/*.d.ts"
+    "src/**/*.vue",
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "examples/**/*.vue",
+    "examples/**/*.ts",
+    "examples/**/*.d.ts"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

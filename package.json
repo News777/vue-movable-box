@@ -1,33 +1,33 @@
 {
-  "name": "vue-auto-draggable",
+  "name": "vue-movable-box",
   "author": "News777",
-  "version": "1.1.4",
+  "version": "1.1.5-beta.1",
   "license": "MIT",
   "files": [
-    "lib",
-    "package.json",
-    "README.md",
-    "LICENSE"
+    "lib"
   ],
-  "main": "./lib/vue-auto-draggable.umd.js",
-  "module": "./lib/vue-auto-draggable.es.js",
+  "main": "./lib/vue-movable-box.umd.js",
+  "module": "./lib/vue-movable-box.es.js",
+  "types": "./lib/index.d.ts",
   "exports": {
-    "./lib/css/VueAutoDraggable.css": "./lib/css/VueAutoDraggable.css",
-    "./css": "./lib/css/VueAutoDraggable.css",
     ".": {
       "types": "./lib/index.d.ts",
-      "import": "./lib/vue-auto-draggable.es.js",
-      "require": "./lib/vue-auto-draggable.umd.cjs"
-    }
+      "import": "./lib/vue-movable-box.es.js",
+      "require": "./lib/vue-movable-box.umd.js"
+    },
+    "./style.css": "./lib/css/VueMovableBox.css"
   },
   "keywords": [
+    "vue",
     "vue3",
-    "auto",
+    "movable",
     "draggable",
-    "plugin"
+    "resizable",
+    "component",
+    "container",
+    "panel"
   ],
-  "types": "./lib/index.d.ts",
-  "description": "An element-dragable plug-in based on Vue3.3",
+  "description": "A Vue 3 component for draggable and resizable containers",
   "private": false,
   "type": "module",
   "repository": {
@@ -43,17 +43,19 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "release": "pnpm build && npm publish"
   },
   "dependencies": {
-    "decimal.js": "^10.4.3",
-    "lodash": "^4.17.21",
-    "vue": "^3.3.11",
-    "vue-auto-draggable": "^1.0.8"
+    "decimal.js": "^10.4.3"
   },
   "peerDependencies": {
-    "vue": "^3.3.11",
-    "vue-auto-draggable": "^1.0.8"
+    "vue": "^3.3.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": false
+    }
   },
   "devDependencies": {
     "@tsconfig/node18": "^18.2.2",
@@ -67,13 +69,10 @@
     "vite": "^5.0.10",
     "vite-plugin-dts": "^3.7.1",
     "vite-plugin-vue-setup-extend": "^0.4.0",
+    "vue": "^3.3.11",
     "vue-tsc": "^1.8.25"
   },
   "engines": {
-    "node": ">= 18.0.0",
-    "npm": ">= 9.0.0"
-  },
-  "volta": {
-    "node": "18.15.0"
+    "node": ">= 18.0.0"
   }
 }

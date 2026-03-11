@@ -1,0 +1,228 @@
+/**
+ * AutoDraggable 样式
+ * 包含拖拽手柄、激活状态、过渡效果等
+ */
+
+// 基础样式
+.auto-draggable {
+  touch-action: none;
+  position: absolute;
+  box-sizing: border-box;
+  border-width: 1px;
+  border-style: solid;
+  outline: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  
+  // 确保图片不干扰拖拽
+  :deep(img) {
+    pointer-events: none;
+  }
+  
+  // 视频同样处理
+  :deep(video) {
+    pointer-events: none;
+  }
+  
+  // 子元素默认不阻挡
+  :deep(*) {
+    pointer-events: auto;
+  }
+  
+  // 禁用状态
+  &.is-disabled {
+    cursor: not-allowed !important;
+    opacity: 0.6;
+    
+    .handle {
+      display: none !important;
+    }
+  }
+  
+  // 激活状态
+  &.is-active {
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+    
+    &:hover {
+      box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.3);
+    }
+  }
+  
+  // 拖拽中状态
+  &.is-dragging {
+    cursor: move !important;
+    opacity: 0.9;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 9999 !important;
+  }
+  
+  // 调整大小中状态
+  &.is-resizing {
+    opacity: 0.95;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  // 只读模式
+  &.is-readonly {
+    cursor: default;
+    
+    .handle {
+      display: none !important;
+    }
+  }
+}
+
+// 拖拽手柄
+.handle {
+  box-sizing: border-box;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: #ffffff;
+  border-width: 2px;
+  border-style: solid;
+  border-radius: 50%;
+  z-index: 9999;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  
+  // 手柄悬停效果
+  &:hover {
+    transform: scale(1.2);
+    background-color: #f0f9ff;
+  }
+  
+  // 手柄激活效果
+  &:active {
+    transform: scale(1.1);
+    background-color: #e6f7ff;
+  }
+}
+
+// 八个方向的手柄位置和光标
+.handle-tl {
+  top: -5px;
+  left: -5px;
+  cursor: nw-resize;
+}
+
+.handle-tm {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: n-resize;
+  
+  &:hover {
+    transform: translateX(-50%) scale(1.2);
+  }
+}
+
+.handle-tr {
+  top: -5px;
+  right: -5px;
+  cursor: ne-resize;
+}
+
+.handle-ml {
+  top: 50%;
+  left: -5px;
+  transform: translateY(-50%);
+  cursor: w-resize;
+  
+  &:hover {
+    transform: translateY(-50%) scale(1.2);
+  }
+}
+
+.handle-mr {
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+  cursor: e-resize;
+  
+  &:hover {
+    transform: translateY(-50%) scale(1.2);
+  }
+}
+
+.handle-bl {
+  bottom: -5px;
+  left: -5px;
+  cursor: sw-resize;
+}
+
+.handle-bm {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: s-resize;
+  
+  &:hover {
+    transform: translateX(-50%) scale(1.2);
+  }
+}
+
+.handle-br {
+  bottom: -5px;
+  right: -5px;
+  cursor: se-resize;
+}
+
+// 文本选择禁用
+.select-none {
+  user-select: none;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+// RTL 支持（可选）
+[dir="rtl"] {
+  .handle-tl {
+    left: auto;
+    right: -5px;
+  }
+  
+  .handle-tr {
+    left: -5px;
+    right: auto;
+  }
+  
+  .handle-ml {
+    left: auto;
+    right: -5px;
+  }
+  
+  .handle-mr {
+    left: -5px;
+    right: auto;
+  }
+  
+  .handle-bl {
+    left: auto;
+    right: -5px;
+  }
+  
+  .handle-br {
+    left: -5px;
+    right: auto;
+  }
+}
+
+// 动画关键帧（可选）
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(64, 158, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(64, 158, 255, 0);
+  }
+}
+
+.is-active {
+  animation: pulse 1.5s infinite;
+}
