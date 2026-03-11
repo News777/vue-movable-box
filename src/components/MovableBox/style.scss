@@ -1,7 +1,18 @@
 /**
- * AutoDraggable 样式
+ * MovableBox 样式
  * 包含拖拽手柄、激活状态、过渡效果等
  */
+
+// CSS 变量 - 便于主题定制
+:root {
+  --movable-box-border-color: #dcdfe6;
+  --movable-box-handle-bg: #ffffff;
+  --movable-box-handle-border: #409efd;
+  --movable-box-active-shadow: rgba(64, 158, 255, 0.2);
+  --movable-box-dragging-shadow: rgba(0, 0, 0, 0.15);
+  --movable-box-cursor-grab: grab;
+  --movable-box-cursor-grabbing: grabbing;
+}
 
 // 基础样式
 .auto-draggable {

@@ -8,17 +8,20 @@
       'is-active': state.active,
       'is-dragging': state.isDragging,
       'is-resizing': state.isResizing,
-      'is-readonly': initRect
+      'is-readonly': initRect,
+      'is-transition': enableTransition
     }"
     :style="MovableBoxStyle"
     @mousedown="handleMouseDown($event, null)"
     @touchstart.passive="handleTouchStart($event, null)"
     @dblclick="handleDoubleClick"
+    @keydown="handleKeyDown"
+    tabindex="0"
   >
-    <!-- 拖拽手柄 -->
+    <!-- 拖拽手柄 - 根据 resizeDirections 过滤 -->
     <template v-for="handle in handles" :key="handle">
       <div
-        v-show="state.active && resizeable && !disabled"
+        v-show="state.active && resizeable && !disabled && isHandleAllowed(handle)"
         class="handle"
         :class="'handle-' + handle"
         :style="HandleStyle"
@@ -81,6 +84,29 @@ interface MovableBoxProps<T> {
   handles?: Array<HandlePosition>;
   disabled?: boolean;
   initRect?: boolean;
+  // 边界与网格
+  edgeDistance?: number;
+  snapToGrid?: boolean;
+  gridSize?: number;
+  dragDirections?: string[];
+  resizeDirections?: string[];
+  enableTransition?: boolean;
+  keyboardEnabled?: boolean;
+  keyboardStep?: number;
+  boundsMargin?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
+  // 对齐吸附
+  snapToElements?: boolean;
+  snapThreshold?: number;
+  // 碰撞检测
+  collisionEnabled?: boolean;
+  allowOverlap?: boolean;
+  // 对齐目标元素
+  snapTargets?: Array<{ left: number; top: number; width: number; height: number; id?: string }>;
 }
 
 interface MovableBoxExpose {
@@ -114,7 +140,7 @@ const props = withDefaults(defineProps<MovableBoxProps<any>>(), {
   isKeepDecimals: false,
   decimalPlaces: 2,
   draggable: true,
-  resizeable: true,
+  resizable: true,
   limitAreaForParent: true,
   disabledUserSelect: true,
   ratioLock: false,
@@ -130,7 +156,24 @@ const props = withDefaults(defineProps<MovableBoxProps<any>>(), {
   handles: () => ['tl', 'tm', 'tr', 'mr', 'br', 'bm', 'bl', 'ml'] as HandlesSet,
   disabled: false,
   initRect: false,
-  active: false
+  active: false,
+  // 新增功能默认值
+  edgeDistance: 0,
+  snapToGrid: false,
+  gridSize: 20,
+  dragDirections: () => ['top', 'bottom', 'left', 'right'],
+  resizeDirections: () => ['tl', 'tm', 'tr', 'mr', 'br', 'bm', 'bl', 'ml'],
+  enableTransition: false,
+  keyboardEnabled: false,
+  keyboardStep: 1,
+  boundsMargin: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+  // 对齐吸附
+  snapToElements: false,
+  snapThreshold: 10,
+  // 碰撞检测
+  collisionEnabled: false,
+  allowOverlap: false,
+  snapTargets: () => []
 });
 
 const emit = defineEmits<{
@@ -146,6 +189,11 @@ const emit = defineEmits<{
   (event: 'out-of-bounds', direction: 'left' | 'top' | 'right' | 'bottom'): void;
   (event: 'move', value: ExtendsMovableBox): void;
   (event: 'resize', value: ExtendsMovableBox): void;
+  // 对齐吸附事件
+  (event: 'snap', result: { snapped: boolean; point?: string }): void;
+  (event: 'guides', data: { vertical: number[]; horizontal: number[] }): void;
+  // 碰撞事件
+  (event: 'collision', result: { colliding: boolean; direction?: string }): void;
 }>();
 
 // 响应式状态
@@ -206,9 +254,11 @@ const MovableBoxStyle = computed<CSSProperties>(() => ({
   opacity: state.active ? 1 : 0.9,
   // 硬件加速
   transform: 'translateZ(0)',
-  willChange: state.isDragging || state.isResizing ? 'left, top' : 'auto',
-  // 禁用 CSS 过渡以获得更快的响应
-  transition: 'none'
+  willChange: state.isDragging || state.isResizing ? 'left, top, width, height' : 'auto',
+  // 过渡动画（仅在启用且非拖拽时）
+  transition: props.enableTransition && !state.isDragging && !state.isResizing 
+    ? 'left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease' 
+    : 'none'
 }));
 
 const HandleStyle = computed<CSSProperties>(() => ({
@@ -287,6 +337,107 @@ const figureNewVal = (value: string | number, type: 'w' | 'h'): number => {
       : (valIsNaN(value, 0) / state.parentInfo.height) * 100
     : value;
   return figureFinalValue(finalVal, props.scale, props.isKeepDecimals, props.decimalPlaces);
+};
+
+// 检查手柄是否允许
+const isHandleAllowed = (handle: string): boolean => {
+  return props.resizeDirections.includes(handle as any);
+};
+
+// 检查拖拽方向是否允许
+const isDragDirectionAllowed = (direction: string): boolean => {
+  return props.dragDirections.includes(direction);
+};
+
+// 网格吸附
+const snapToGridValue = (value: number): number => {
+  if (!props.snapToGrid) return value;
+  const gridSize = props.gridSize || 20;
+  return Math.round(value / gridSize) * gridSize;
+};
+
+// 键盘处理
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (!props.keyboardEnabled || props.disabled || !state.active) return;
+  
+  const step = props.keyboardStep || 1;
+  let moved = false;
+  let newLeft = autoDraggable.value.left;
+  let newTop = autoDraggable.value.top;
+  
+  switch (event.key) {
+    case 'ArrowUp':
+      if (isDragDirectionAllowed('top')) {
+        newTop = snapToGridValue(Number(newTop) - step);
+        moved = true;
+      }
+      break;
+    case 'ArrowDown':
+      if (isDragDirectionAllowed('bottom')) {
+        newTop = snapToGridValue(Number(newTop) + step);
+        moved = true;
+      }
+      break;
+    case 'ArrowLeft':
+      if (isDragDirectionAllowed('left')) {
+        newLeft = snapToGridValue(Number(newLeft) - step);
+        moved = true;
+      }
+      break;
+    case 'ArrowRight':
+      if (isDragDirectionAllowed('right')) {
+        newLeft = snapToGridValue(Number(newLeft) + step);
+        moved = true;
+      }
+      break;
+    case 'Escape':
+      state.active = false;
+      break;
+    default:
+      return;
+  }
+  
+  if (moved) {
+    event.preventDefault();
+    // 应用边界检查
+    const bounds = getBounds();
+    newLeft = Math.max(bounds.minLeft, Math.min(bounds.maxLeft, newLeft as number));
+    newTop = Math.max(bounds.minTop, Math.min(bounds.maxTop, newTop as number));
+    
+    autoDraggable.value.left = keepDecimalsToNum(newLeft);
+    autoDraggable.value.top = keepDecimalsToNum(newTop);
+    emit('update:modelValue', { ...autoDraggable.value });
+    emit('move', { ...autoDraggable.value });
+  }
+};
+
+// 获取边界
+const getBounds = () => {
+  const margin = props.boundsMargin || { top: 0, right: 0, bottom: 0, left: 0 };
+  const edge = props.edgeDistance || 0;
+  
+  const marginTop = margin.top || 0;
+  const marginRight = margin.right || 0;
+  const marginBottom = margin.bottom || 0;
+  const marginLeft = margin.left || 0;
+  
+  let minLeft = marginLeft || edge;
+  let maxLeft = isPercent.value 
+    ? 100 - marginRight - edge - Number(autoDraggable.value.width)
+    : state.parentInfo.width - marginRight - edge - Number(autoDraggable.value.width);
+  let minTop = marginTop || edge;
+  let maxTop = isPercent.value 
+    ? 100 - marginBottom - edge - Number(autoDraggable.value.height)
+    : state.parentInfo.height - marginBottom - edge - Number(autoDraggable.value.height);
+  
+  if (props.limitAreaForParent) {
+    if (!isPercent.value) {
+      minLeft = Math.max(0, marginLeft);
+      minTop = Math.max(0, marginTop);
+    }
+  }
+  
+  return { minLeft, maxLeft: Math.max(minLeft, maxLeft), minTop, maxTop: Math.max(minTop, maxTop) };
 };
 
 // 鼠标按下处理
@@ -431,15 +582,24 @@ const doDrag = (event: MouseEvent | TouchEvent) => {
       // 检测边界溢出
       checkBounds(newLeft, newTop, w, h);
       
+      // 应用网格吸附
+      let finalLeft = keepDecimalsToNum(newLeft);
+      let finalTop = keepDecimalsToNum(newTop);
+      
+      if (props.snapToGrid) {
+        finalLeft = snapToGridValue(finalLeft);
+        finalTop = snapToGridValue(finalTop);
+      }
+      
       autoDraggable.value.left = restrictToBounds(
-        keepDecimalsToNum(newLeft),
+        finalLeft,
         eleMinWidth.value,
         isPercent.value ? 100 : state.parentInfo.width - w,
         props.limitAreaForParent
       );
       
       autoDraggable.value.top = restrictToBounds(
-        keepDecimalsToNum(newTop),
+        finalTop,
         eleMinHeight.value,
         isPercent.value ? 100 : state.parentInfo.height - h,
         props.limitAreaForParent

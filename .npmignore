@@ -1,0 +1,44 @@
+# npm ignore
+# Dependencies
+node_modules/
+
+# Build output
+lib/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+*.test.ts
+*.spec.ts
+__tests__/
+
+# Docs
+*.md
+!README.md
+!LICENSE
+!CHANGELOG.md
+
+# Config
+tsconfig*.json
+vite.config.ts
+.eslintrc*
+.prettierrc
+.gitignore
+
+# Dev
+dev/
+examples/
+*.html
+env.d.ts
+test.html
