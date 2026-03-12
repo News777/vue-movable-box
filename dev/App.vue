@@ -40,7 +40,8 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, watch, type StyleValue } from 'vue';
-import { VueAutoDraggable, type ExtendsAutoDraggable } from '../packages';
+import { VueAutoDraggable } from '../packages';
+import { ExtendsAutoDraggable } from '../packages/AutoDraggable/type';
 const autoDraggable = ref<any>([
   {
     width: 300,
@@ -48,7 +49,7 @@ const autoDraggable = ref<any>([
     top: 0,
     left: 0,
     zIndex: 1,
-    uid: '1',
+    uid: '1'
   },
   {
     width: 500,
@@ -56,8 +57,8 @@ const autoDraggable = ref<any>([
     top: 330,
     left: 330,
     zIndex: 1,
-    uid: '2',
-  },
+    uid: '2'
+  }
 ]);
 
 const select = ref<any>({});
@@ -65,17 +66,17 @@ const select = ref<any>({});
 const radio = ref<string>('1280x800');
 const context = reactive<{ width: number; height: number }>({
   width: 1280,
-  height: 800,
+  height: 800
 });
 watch(
   radio,
-  (newVal) => {
+  newVal => {
     const [width, height] = newVal.split('x').map(Number);
     context.width = width;
     context.height = height;
   },
   {
-    immediate: true,
+    immediate: true
   }
 );
 
@@ -89,14 +90,14 @@ const outsizeStyle = computed<StyleValue>(() => {
     height: context.height * scale.value + 'px',
     top: '200px',
     left: '200px',
-    position: 'absolute',
+    position: 'absolute'
   };
 });
 const style = computed(() => {
   return {
     scale: scale.value,
     width: context.width + 'px',
-    height: context.height + 'px',
+    height: context.height + 'px'
   };
 });
 
@@ -145,4 +146,3 @@ const inactived = (value: ExtendsAutoDraggable) => {
   }
 }
 </style>
-../packages/ExtendsAutoDraggable/types/index
