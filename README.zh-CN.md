@@ -2,6 +2,8 @@
 
 ✨ 一个功能强大的 Vue 3 拖拽和调整大小组件
 
+**[English](./README.md)** | 中文
+
 [![npm version](https://img.shields.io/npm/v/vue-movable-box.svg)](https://www.npmjs.com/package/vue-movable-box)
 [![License](https://img.shields.io/github/license/News777/VueDraggable.svg)](LICENSE)
 [![Vue 3](https://img.shields.io/badge/Vue-3.x-green.svg)](https://vuejs.org)

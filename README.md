@@ -2,6 +2,8 @@
 
 ✨ A powerful Vue 3 draggable and resizable component
 
+**[中文](./README.zh-CN.md)** | English
+
 [![npm version](https://img.shields.io/npm/v/vue-movable-box.svg)](https://www.npmjs.com/package/vue-movable-box)
 [![License](https://img.shields.io/github/license/News777/VueDraggable.svg)](LICENSE)
 [![Vue 3](https://img.shields.io/badge/Vue-3.x-green.svg)](https://vuejs.org)
