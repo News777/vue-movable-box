@@ -6,7 +6,7 @@ on implementation findings and user feedback; completed work is recorded in `CHA
 本规划用于说明项目的预期演进方向。具体版本内容可根据实现验证和用户反馈调整；已经完成的改动以
 `CHANGELOG.md` 为准。
 
-## 1.2.0 — Interaction foundation / 交互基础能力
+## 2.0.0 — Interaction foundation / 交互基础能力
 
 The next release focuses on consistent input behavior and accessibility before expanding the
 geometry model.
@@ -51,7 +51,7 @@ does not also change the component's geometry model.
 
 多选、组合变换和旋转暂不纳入本版本，避免输入层重构与几何模型改造同时进行。
 
-## 1.3.0 — Selection and groups / 多选与组合
+## 2.1.0 — Selection and groups / 多选与组合
 
 - Introduce a separate `MovableGroup` or scene-level controller instead of adding group ownership to
   each `MovableBox`.
@@ -63,7 +63,7 @@ does not also change the component's geometry model.
 - Add performance scenarios for 100, 500, and 1,000 boxes before selecting a spatial-index strategy.
   在选择空间索引方案前，建立 100、500 和 1,000 个方框的性能基准。
 
-## 1.4.0 — Advanced snapping / 增强吸附
+## 2.2.0 — Advanced snapping / 增强吸附
 
 - Support equal-spacing guides and configurable snap strategies.
   支持等间距辅助线和可配置吸附策略。
@@ -72,7 +72,7 @@ does not also change the component's geometry model.
 - Keep guide and snap event payloads deterministic when multiple targets compete.
   多个目标竞争时，保持辅助线与吸附事件载荷稳定、可预测。
 
-## 2.0.0 — Transform model / 变换模型
+## 3.0.0 — Transform model / 变换模型
 
 - Add rotation and transform-origin support.
   增加旋转和变换原点支持。

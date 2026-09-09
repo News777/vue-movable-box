@@ -208,10 +208,12 @@ interface CollisionEventPayload {
 
 - 方向键：按 `keyboardStep` 移动方框（受 `dragDirections` 限制）。
 - `Shift` + 方向键：以右下角手柄（或 `resizeDirections` 中第一个允许的手柄）为锚点调整大小，方向键指示被拖动边缘的移动方向，因此 `Shift+→`/`Shift+↓` 放大、`Shift+←`/`Shift+↑` 缩小。
-- 聚焦某个缩放手柄后，方向键沿该手柄的轴向调整大小（角手柄支持两个轴向），按住 `Shift` 反向；手柄带有 `role="separator"`、`aria-orientation` 与 `aria-label`（如 "Resize bottom right"）语义。
+- 聚焦某个缩放手柄后，方向键沿该手柄的轴向调整大小（角手柄支持两个轴向），按住 `Shift` 反向；边缘手柄提供 `role="separator"`、方向、当前/最小/最大尺寸与快捷键语义，角落手柄提供 `role="group"` 和双轴缩放描述，所有手柄都有可访问名称。
 - `Escape`：指针拖拽或缩放进行中时取消本次交互——矩形恢复到交互前状态，并触发 `drag-cancel` / `resize-cancel`（而不是 `drag-stop` / `resize-stop`）；空闲且方框激活时则取消激活。
 
 不开启 `keyboardEnabled` 时，手柄不可聚焦、方向键不生效，但 `Escape` 仍可取消进行中的指针交互。
+
+在按钮、链接、表单控件等交互式插槽内容中按方向键时，按键仍由该控件自身处理，不会移动方框。
 
 ### Methods
 

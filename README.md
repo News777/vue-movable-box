@@ -212,14 +212,18 @@ focus outline using the theme color:
   `resizeDirections`). Arrows indicate the direction the moved edge travels, so `Shift+→` /
   `Shift+↓` grow and `Shift+←` / `Shift+↑` shrink.
 - When a resize handle is focused, arrow keys resize along that handle's axes (corner handles
-  support both axes) and `Shift` inverts the direction. Handles carry `role="separator"`,
-  `aria-orientation`, and `aria-label` (e.g. "Resize bottom right") semantics.
+  support both axes) and `Shift` inverts the direction. Edge handles expose `role="separator"`,
+  orientation, current/minimum/maximum size, and keyboard shortcuts. Corner handles expose
+  `role="group"` with a two-axis resize description. Every handle has a descriptive label.
 - `Escape` cancels an in-progress drag or resize — the rectangle is restored to its
   pre-interaction state and `drag-cancel` / `resize-cancel` are emitted instead of
   `drag-stop` / `resize-stop`. When idle and the box is active, `Escape` deactivates it.
 
 Without `keyboardEnabled`, handles stay unfocusable and arrow keys have no effect; `Escape` still
 cancels in-progress pointer interactions.
+
+Arrow keys pressed inside interactive slot content (such as buttons, links, and form controls)
+remain owned by that control and do not move the box.
 
 ### Methods
 
