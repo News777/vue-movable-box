@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-09
+
+> 正式版本：Pointer Events 迁移、触摸/触控笔兼容性及消费者升级路径已按预发布计划验证完毕。功能范围与 [2.0.0-beta.1] 一致。
+
 ## [2.0.0-beta.1] - 2026-08-31
 
 > 预发布版本：用于验证 Pointer Events 迁移、触摸/触控笔兼容性及现有消费者升级。
