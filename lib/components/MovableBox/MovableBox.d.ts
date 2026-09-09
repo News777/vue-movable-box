@@ -1,5 +1,5 @@
 import { PropType } from 'vue';
-import { BoundsMargin, CollisionEventPayload, DragDirection, ExtendsMovableBox, GuidesEventPayload, HandlesSet, SnapTarget, SnapEventPayload } from '../../types/MovableBox';
+import { BoundsMargin, CollisionEventPayload, DragDirection, ExtendsMovableBox, GuidesEventPayload, HandlesSet, SnapStrategy, SnapTarget, SnapEventPayload } from '../../types/MovableBox';
 
 declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<import('vue').ExtractPropTypes<{
     theme: {
@@ -145,6 +145,16 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     snapThreshold: {
         type: NumberConstructor;
         default: number;
+    };
+    /** Return false to exclude a snap target from snapping on the given axis. */
+    snapFilter: {
+        type: PropType<(target: SnapTarget, axis: "horizontal" | "vertical") => boolean>;
+        default: undefined;
+    };
+    /** Strategy consultation order per axis. Default: alignment wins over spacing. */
+    snapPriority: {
+        type: PropType<SnapStrategy[]>;
+        default: () => string[];
     };
     collisionEnabled: {
         type: BooleanConstructor;
@@ -332,6 +342,16 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: NumberConstructor;
         default: number;
     };
+    /** Return false to exclude a snap target from snapping on the given axis. */
+    snapFilter: {
+        type: PropType<(target: SnapTarget, axis: "horizontal" | "vertical") => boolean>;
+        default: undefined;
+    };
+    /** Strategy consultation order per axis. Default: alignment wins over spacing. */
+    snapPriority: {
+        type: PropType<SnapStrategy[]>;
+        default: () => string[];
+    };
     collisionEnabled: {
         type: BooleanConstructor;
         default: boolean;
@@ -398,6 +418,8 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     boundsMargin: BoundsMargin;
     snapToElements: boolean;
     snapThreshold: number;
+    snapFilter: (target: SnapTarget, axis: "horizontal" | "vertical") => boolean;
+    snapPriority: SnapStrategy[];
     collisionEnabled: boolean;
     allowOverlap: boolean;
     snapTargets: SnapTarget[];

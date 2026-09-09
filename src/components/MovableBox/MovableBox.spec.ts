@@ -265,6 +265,50 @@ describe('MovableBox', () => {
     expect(wrapper.emitted('snap')?.at(-1)?.[0]).toEqual({ snapped: false });
   });
 
+  it('equalizes spacing between two targets and reports the spacing payload', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 122, top: 500, width: 50, height: 50 }),
+      snapToElements: true,
+      snapThreshold: 6,
+      snapTargets: [
+        { id: 'left-anchor', left: 0, top: 400, width: 50, height: 50 },
+        { id: 'right-anchor', left: 250, top: 400, width: 50, height: 50 }
+      ]
+    });
+    await pointerDrag(wrapper, [0, 0], [1, 0], '.auto-draggable', false);
+
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 125px');
+    expect(wrapper.emitted('snap')?.at(-1)?.[0]).toMatchObject({
+      snapped: true,
+      spacing: [
+        { axis: 'horizontal', gap: 75, targetIds: ['left-anchor', 'right-anchor'], guides: [50, 250] }
+      ]
+    });
+    expect(wrapper.findAll('.movable-box-guide--vertical')).toHaveLength(2);
+
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+    await nextTick();
+    expect(wrapper.emitted('snap')?.at(-1)?.[0]).toEqual({ snapped: false });
+  });
+
+  it('honors snapFilter by dropping excluded targets on the filtered axis', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 8, top: 500, width: 20, height: 20 }),
+      snapToElements: true,
+      snapThreshold: 5,
+      snapTargets: [
+        { id: 'kept', left: 5, top: 300, width: 20, height: 20 },
+        { id: 'excluded', left: 10, top: 300, width: 20, height: 20 }
+      ],
+      snapFilter: (target: { id?: string }) => target.id !== 'excluded'
+    });
+    await pointerDrag(wrapper, [0, 0], [1, 0], '.auto-draggable', false);
+
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 5px');
+    expect(wrapper.emitted('snap')?.at(-1)?.[0]).toMatchObject({ targetId: 'kept' });
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+  });
+
   it('emits snap again when the snapped coordinate changes', async () => {
     const wrapper = mountBox({
       modelValue: makeModel({ left: 8, top: 100, width: 20, height: 20 }),

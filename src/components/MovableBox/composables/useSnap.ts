@@ -1,8 +1,8 @@
 import { ref } from 'vue';
-import { snapToElements, type SnapAxes, type SnapResult } from '../utils/snap';
+import { snapToElements, type SnapAxes, type SnapOptions, type SnapResult } from '../utils/snap';
 import type { GuidesEventPayload, SnapTarget } from '../types';
 
-interface UseSnapOptions {
+interface UseSnapOptions extends SnapOptions {
   enabled: boolean;
   threshold: number;
 }
@@ -20,13 +20,17 @@ export function useSnap(getOptions: () => UseSnapOptions) {
   ): SnapResult => {
     const options = getOptions();
     const result = options.enabled
-      ? snapToElements(current, targets, options.threshold, axes)
+      ? snapToElements(current, targets, options.threshold, axes, {
+          filter: options.filter,
+          priority: options.priority
+        })
       : {
           ...current,
           snapped: false,
           points: [],
           targetIds: {},
-          guides: emptyGuides()
+          guides: emptyGuides(),
+          spacing: []
         };
     guides.value = result.guides;
     lastSnapResult.value = result.snapped ? result : null;

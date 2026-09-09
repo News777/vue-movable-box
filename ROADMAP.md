@@ -71,6 +71,9 @@ does not also change the component's geometry model.
 
 ## 2.2.0 — Advanced snapping / 增强吸附
 
+> Shipped in v2.2.0 (2026-09-09): equal-spacing guides with the `spacing` snap payload,
+> per-axis `snapFilter`, and deterministic `snapPriority` strategy ordering; see `CHANGELOG.md`.
+
 - Support equal-spacing guides and configurable snap strategies.
   支持等间距辅助线和可配置吸附策略。
 - Allow applications to filter or prioritize snap targets without rebuilding component internals.

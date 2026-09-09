@@ -81,6 +81,7 @@ import type {
   HandlePosition,
   HandlesSet,
   MovableBoxExpose,
+  SnapStrategy,
   SnapTarget,
   SnapEventPayload
 } from '../../types/MovableBox';
@@ -153,6 +154,16 @@ const props = defineProps({
   },
   snapToElements: { type: Boolean, default: false },
   snapThreshold: { type: Number, default: 10 },
+  /** Return false to exclude a snap target from snapping on the given axis. */
+  snapFilter: {
+    type: Function as PropType<(target: SnapTarget, axis: 'horizontal' | 'vertical') => boolean>,
+    default: undefined
+  },
+  /** Strategy consultation order per axis. Default: alignment wins over spacing. */
+  snapPriority: {
+    type: Array as PropType<SnapStrategy[]>,
+    default: () => ['alignment', 'spacing']
+  },
   collisionEnabled: { type: Boolean, default: false },
   allowOverlap: { type: Boolean, default: false },
   snapTargets: { type: Array as PropType<SnapTarget[]>, default: () => [] },
@@ -422,7 +433,12 @@ const scaledDelta = (value: number, axis: 'horizontal' | 'vertical') => {
 };
 
 const grid = useGrid(() => ({ snapToGrid: props.snapToGrid, gridSize: props.gridSize }));
-const snap = useSnap(() => ({ enabled: props.snapToElements, threshold: props.snapThreshold }));
+const snap = useSnap(() => ({
+  enabled: props.snapToElements,
+  threshold: props.snapThreshold,
+  filter: props.snapFilter,
+  priority: props.snapPriority
+}));
 const collision = useCollision(() => ({
   enabled: props.collisionEnabled,
   allowOverlap: props.allowOverlap
@@ -435,30 +451,32 @@ let lastCollisionKey = 'clear';
 const horizontalSnapPoints = new Set(['left', 'right', 'center-x']);
 const verticalSnapPoints = new Set(['top', 'bottom', 'center-y']);
 
-const publishSnap = (result: SnapResult) => {
-  const targetIds = {
-    horizontal: result.points.some(point => horizontalSnapPoints.has(point))
-      ? result.targetIds.horizontal
-      : undefined,
-    vertical: result.points.some(point => verticalSnapPoints.has(point))
-      ? result.targetIds.vertical
-      : undefined
-  };
-  const payload: SnapEventPayload = result.snapped
-    ? {
-        snapped: true,
-        point: result.snapPoint,
-        points: result.points,
-        targetId: result.targetId,
-        targetIds
-      }
-    : { snapped: false };
-  const snapKey = JSON.stringify({
-    payload,
-    targetIds,
-    left: result.points.some(point => horizontalSnapPoints.has(point)) ? result.left : undefined,
-    top: result.points.some(point => verticalSnapPoints.has(point)) ? result.top : undefined
-  });
+  const publishSnap = (result: SnapResult) => {
+    const targetIds = {
+      horizontal: result.points.some(point => horizontalSnapPoints.has(point))
+        ? result.targetIds.horizontal
+        : undefined,
+      vertical: result.points.some(point => verticalSnapPoints.has(point))
+        ? result.targetIds.vertical
+        : undefined
+    };
+    const spacing = result.snapped ? deepClone(result.spacing ?? []) : [];
+    const payload: SnapEventPayload = result.snapped
+      ? {
+          snapped: true,
+          point: result.snapPoint,
+          points: result.points,
+          targetId: result.targetId,
+          targetIds,
+          spacing: spacing.length > 0 ? spacing : undefined
+        }
+      : { snapped: false };
+    const snapKey = JSON.stringify({
+      payload,
+      targetIds,
+      left: result.points.some(point => horizontalSnapPoints.has(point)) ? result.left : undefined,
+      top: result.points.some(point => verticalSnapPoints.has(point)) ? result.top : undefined
+    });
   if (snapKey !== lastSnapKey) {
     if (result.snapped || lastSnapKey !== 'clear') emit('snap', payload);
     lastSnapKey = result.snapped ? snapKey : 'clear';
@@ -541,7 +559,8 @@ const applyInteractivePosition = (
     snapped: false,
     points: [],
     targetIds: {},
-    guides: { vertical: [], horizontal: [] }
+    guides: { vertical: [], horizontal: [] },
+    spacing: []
   };
 
   if (useElementSnap) {
@@ -594,11 +613,18 @@ const applyInteractivePosition = (
     });
     const keepsHorizontal = points.some(point => horizontalSnapPoints.has(point));
     const keepsVertical = points.some(point => verticalSnapPoints.has(point));
+    const spacing = snapResult.spacing.filter(info =>
+      info.axis === 'horizontal' ? !horizontalChanged : !verticalChanged
+    );
+    const spacingGuides = {
+      vertical: spacing.flatMap(info => (info.axis === 'horizontal' ? info.guides : [])),
+      horizontal: spacing.flatMap(info => (info.axis === 'vertical' ? info.guides : []))
+    };
     snapResult = {
       ...snapResult,
       left: asNumber(next.left),
       top: asNumber(next.top),
-      snapped: points.length > 0,
+      snapped: points.length > 0 || spacing.length > 0,
       snapPoint: points[0],
       points,
       targetId: keepsHorizontal
@@ -611,9 +637,10 @@ const applyInteractivePosition = (
         vertical: keepsVertical ? snapResult.targetIds.vertical : undefined
       },
       guides: {
-        vertical: keepsHorizontal ? snapResult.guides.vertical : [],
-        horizontal: keepsVertical ? snapResult.guides.horizontal : []
-      }
+        vertical: keepsHorizontal ? snapResult.guides.vertical : spacingGuides.vertical,
+        horizontal: keepsVertical ? snapResult.guides.horizontal : spacingGuides.horizontal
+      },
+      spacing
     };
     if (snapResult.snapped) snap.setGuides(snapResult.guides);
     else snap.clearGuides();
@@ -771,7 +798,8 @@ const processInteraction = (source: PointerEvent) => {
       snapped: false,
       points: [],
       targetIds: {},
-      guides: { vertical: [], horizontal: [] }
+      guides: { vertical: [], horizontal: [] },
+      spacing: []
     });
     snap.clearGuides();
     const candidate = resizeFromHandle(state.beforeInteraction, state.handle, deltaX, deltaY);

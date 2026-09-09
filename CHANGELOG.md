@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-09
+
+### Added
+- 等间距吸附辅助线：`snapToElements` 开启时，方框移动到两个目标之间会自动吸附到两侧间距相等的位置，`snap` 事件载荷新增 `spacing: [{ axis, gap, targetIds, guides }]`，并在两个锚点边缘绘制辅助线
+- 新增 `snapFilter` 属性：按轴过滤吸附目标（返回 false 即排除），不影响碰撞检测
+- 新增 `snapPriority` 属性：配置每根轴的吸附策略咨询顺序（`'alignment' | 'spacing'`，默认 alignment 优先），设为 `['alignment']` 可关闭等间距吸附
+- 吸附解析确定性规则：每根轴按 `snapPriority` 顺序咨询策略，策略内取阈值内最近候选，距离相等时按 `snapTargets` 数组顺序取胜；等间距配对按目标数组顺序（前锚 × 后锚）确定性遍历
+
+### Changed
+- `snapToElements` 开启时等间距吸附默认参与解析（此前仅有对齐吸附）；需要旧行为的消费者可设置 `snap-priority` 为 `['alignment']`
+
 ## [2.1.0] - 2026-09-09
 
 ### Added

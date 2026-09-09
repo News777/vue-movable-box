@@ -23,6 +23,17 @@ export interface BoundsMargin {
 export interface SnapTarget extends MovableBoxRect {
     id?: string;
 }
+/** Snap resolution strategies; consulted in configurable priority order. */
+export type SnapStrategy = 'alignment' | 'spacing';
+export interface SnapSpacingInfo {
+    axis: 'horizontal' | 'vertical';
+    /** The equalized gap in the leader's coordinate space. */
+    gap: number;
+    /** Anchor target ids in pair order; undefined entries mean an unnamed target. */
+    targetIds: (string | undefined)[];
+    /** Guide line coordinates (perpendicular axis values) marking the two anchor edges. */
+    guides: number[];
+}
 export interface GuidesEventPayload {
     vertical: number[];
     horizontal: number[];
@@ -37,6 +48,8 @@ export interface SnapEventPayload {
         horizontal?: string;
         vertical?: string;
     };
+    /** Equal-spacing resolutions, ordered [horizontal, vertical]; present only while snapped. */
+    spacing?: SnapSpacingInfo[];
 }
 export interface CollisionEventPayload {
     colliding: boolean;
@@ -86,6 +99,10 @@ export interface MovableBoxProps<T extends object = object> {
     boundsMargin?: BoundsMargin;
     snapToElements?: boolean;
     snapThreshold?: number;
+    /** Return false to exclude a snap target from snapping on the given axis. */
+    snapFilter?: (target: SnapTarget, axis: 'horizontal' | 'vertical') => boolean;
+    /** Strategy consultation order per axis. Default: alignment wins over spacing. */
+    snapPriority?: SnapStrategy[];
     collisionEnabled?: boolean;
     allowOverlap?: boolean;
     snapTargets?: SnapTarget[];

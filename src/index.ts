@@ -1,7 +1,7 @@
 /**
  * VueMovableBox - 可拖拽可调整大小的 Vue 3 组件
  * @description A draggable and resizable container component for Vue 3
- * @version 2.1.0
+ * @version 2.2.0
  */
 
 import type { App } from 'vue';
@@ -25,6 +25,8 @@ export type {
   MovableBoxRect,
   SnapEventPayload,
   SnapPoint,
+  SnapSpacingInfo,
+  SnapStrategy,
   SnapTarget
 } from './types/MovableBox';
 export type {
@@ -50,7 +52,7 @@ const install = (app: App) => {
 // 默认导出
 export default {
   name,
-  version: '2.1.0',
+  version: '2.2.0',
   install
 };
 

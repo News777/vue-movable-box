@@ -114,6 +114,8 @@ pnpm dev
 | `snapToElements` | `boolean` | `false` | 吸附到 `snapTargets` 的边缘或中心 |
 | `snapThreshold` | `number` | `10` | 元素吸附阈值 |
 | `snapTargets` | `SnapTarget[]` | `[]` | 其他元素的矩形数据；调用方应排除自身 |
+| `snapFilter` | `(target, axis) => boolean` | `undefined` | 返回 false 可在对应轴（`horizontal` / `vertical`）上排除该吸附目标 |
+| `snapPriority` | `('alignment' \| 'spacing')[]` | `['alignment','spacing']` | 每个轴的策略咨询顺序；阈值内首个产出候选的策略生效 |
 | `collisionEnabled` | `boolean` | `false` | 对 `snapTargets` 启用碰撞检测 |
 | `allowOverlap` | `boolean` | `false` | 检测到碰撞时是否仍允许重叠 |
 | **方向控制** | | | |
@@ -344,6 +346,28 @@ boxRef.value.cancelInteraction()
 ```
 
 `otherBoxes` 中的每项包含 `left`、`top`、`width`、`height` 和可选 `id`，组件会自动显示对齐辅助线。边缘接触不算碰撞；关闭重叠时，拖拽或缩放保持在最后一个合法矩形，初始已重叠的元素只允许向总重叠面积减小的方向移动。多目标碰撞以重叠面积最大的目标决定 `direction` 和 `targetId`；开启 `allowOverlap` 会提交候选矩形，但仍会上报碰撞。
+
+#### 等间距辅助线
+
+开启 `snapToElements` 后，当方框移动到两个目标之间，会自动吸附到两侧间距相等的位置，
+`snap` 载荷携带 `spacing: [{ axis, gap, targetIds, guides }]`，并在两个锚点边缘绘制辅助线。
+传入 `:snap-priority="['alignment']"` 可关闭等间距吸附；传入
+`:snap-priority="['spacing', 'alignment']"` 可让等间距在两种策略同时命中阈值时优先生效。
+`snapFilter` 可按轴排除目标，例如跳过锁定图层：
+
+```vue
+<MovableBox
+  v-model="current"
+  :snap-to-elements="true"
+  :snap-targets="otherBoxes"
+  :snap-filter="(target, axis) => !lockedIds.has(target.id)"
+  :snap-priority="['alignment', 'spacing']"
+  @snap="handleSnap"
+/>
+```
+
+吸附解析是确定的：每根轴按 `snapPriority` 顺序咨询策略，策略内取阈值内最近候选，
+距离相等时按 `snapTargets` 数组顺序取胜。
 
 ### 键盘控制
 

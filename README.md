@@ -114,6 +114,8 @@ Visit http://localhost:5173 for the interactive demo.
 | `snapToElements` | `boolean` | `false` | Snap to edges or centers in `snapTargets` |
 | `snapThreshold` | `number` | `10` | Element snap threshold |
 | `snapTargets` | `SnapTarget[]` | `[]` | Rectangles of other elements; exclude the current box |
+| `snapFilter` | `(target, axis) => boolean` | `undefined` | Return false to exclude a target from snapping on `horizontal` / `vertical` |
+| `snapPriority` | `('alignment' \| 'spacing')[]` | `['alignment','spacing']` | Strategy consultation order per axis; the first strategy with a candidate inside the threshold wins |
 | `collisionEnabled` | `boolean` | `false` | Detect collisions against `snapTargets` |
 | `allowOverlap` | `boolean` | `false` | Allow a colliding candidate to be committed |
 | **Direction Control** | | | |
@@ -358,6 +360,31 @@ Alignment guides are rendered automatically. Touching edges are not a collision.
 disabled, dragging or resizing keeps the last valid rectangle; an initially overlapping box may
 only move when total overlap decreases. With multiple collisions, the largest overlap determines
 `direction` and `targetId`. Enabling `allowOverlap` commits the candidate but still reports it.
+
+#### Equal-Spacing Guides
+
+When `snapToElements` is on and the box travels between two targets, it snaps to the position
+where the gaps on both sides are equal. The `snap` payload then carries
+`spacing: [{ axis, gap, targetIds, guides }]`, and a guide line is drawn at each anchor edge.
+Set `:snap-priority="['alignment']"` to disable spacing, or
+`:snap-priority="['spacing', 'alignment']"` to let equal spacing win when both strategies have a
+candidate inside the threshold. `snapFilter` drops targets per axis — for example to skip locked
+layers:
+
+```vue
+<MovableBox
+  v-model="current"
+  :snap-to-elements="true"
+  :snap-targets="otherBoxes"
+  :snap-filter="(target, axis) => !lockedIds.has(target.id)"
+  :snap-priority="['alignment', 'spacing']"
+  @snap="handleSnap"
+/>
+```
+
+Snap resolution is deterministic: strategies are consulted in `snapPriority` order per axis, the
+nearest candidate inside `snapThreshold` wins inside a strategy, and equal distances resolve by
+`snapTargets` order.
 
 ### Keyboard Control
 
