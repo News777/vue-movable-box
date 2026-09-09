@@ -396,19 +396,23 @@ nearest candidate inside `snapThreshold` wins inside a strategy, and equal dista
 />
 ```
 
-`rotate` accepts degrees (clockwise, CSS `rotate()` semantics) and `transformOrigin` accepts any
-CSS transform-origin (`'center'`, `'top left'`, `'50% 50%'`). Resizing under rotation maps
-pointer and keyboard deltas into the box's local space (rotation by the inverse angle), so a
-handle grows or shrinks along its rotated edge. The handle itself follows an incremental
-local-space model rather than an exact inverse-kinematic anchor: with large rotations the handle
-can drift slightly from the cursor while min/max, ratio lock, bounds, and collision constraints
-stay exact.
+`rotate` accepts degrees (clockwise, CSS `rotate()` semantics). `transformOrigin` accepts a CSS
+transform-origin subset: one or two tokens of keywords (`left` / `center` / `right` /
+`top` / `bottom`), percentages, or px lengths (e.g. `'center'`, `'top left'`, `'50% 25%'`,
+`'10px 20px'`); extra tokens are ignored and `rem`/`calc()` values are not resolved. Resizing
+under rotation maps pointer and keyboard deltas into the box's local space (rotation by the
+inverse angle), so a handle grows or shrinks along its rotated edge. The handle itself follows
+an incremental local-space model rather than an exact inverse-kinematic anchor: with large
+rotations the on-screen handle displacement differs from the pointer path, while min/max, ratio
+lock, bounds, and collision constraints keep their documented meaning.
 
 Rotated geometry semantics (defined in 3.0.0):
 
 - **Bounds clamping** keeps the axis-aligned bounding box (AABB) of the rotated rectangle inside
   the bounds area; `out-of-bounds` fires against the AABB as well. The AABB honors
-  `transformOrigin`, so non-center origins clamp at their true visual position.
+  `transformOrigin`, so non-center origins clamp at their true visual position. When a resize
+  grows the AABB beyond the area, the rectangle scales down to the largest size that fits and
+  is then clamped into position.
 - **Element snapping** (alignment and equal spacing) evaluates the AABB; the resulting shift is
   applied 1:1 to the unrotated rectangle.
 - **Collision** checks the AABB against the unrotated `snapTargets` rectangles.
@@ -588,6 +592,9 @@ Group semantics:
   their current position.
 - A second concurrent pointer cannot hijack an active session: it drags its own box solo and the
   running formation is untouched.
+- Group geometry uses unrotated member rectangles; with `rotate != 0` on members the clamping
+  treats the rectangle as its unrotated form, so a rotated member's visual AABB may extend past
+  the area edge by its rotation overhang.
 - Exposed methods: `getSelected()`, `select(ids?)`, `getMemberRects()`.
 
 ## TypeScript

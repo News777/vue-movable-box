@@ -71,7 +71,13 @@ import {
 } from 'vue';
 import { useCollision, useGrid, useKeyboard, useSnap } from './composables';
 import { asNumber, clamp, sameRect } from './core/box-geometry';
-import { deltaToLocal, normalizeAngle, resolveTransformOrigin, rotatedAABBAt } from './utils/rotation';
+import {
+  angleToRadians,
+  deltaToLocal,
+  normalizeAngle,
+  resolveTransformOrigin,
+  rotatedAABBAt
+} from './utils/rotation';
 import { GROUP_CONTEXT_KEY, type GroupMemberApi } from '../MovableGroup/context';
 import type {
   BoundsMargin,
@@ -403,6 +409,33 @@ const geometryProbe = (rect: ExtendsMovableBox) => {
   if (!angle) return plane;
   const origin = resolveTransformOrigin(props.transformOrigin, plane.width, plane.height);
   return rotatedAABBAt(plane, angle, origin);
+};
+
+// Shrinks an over-large rotated rectangle so its AABB can fit the area; clamping alone
+// could only translate it, leaving part of the box outside the bounds.
+const fitRotatedSizeToArea = (candidate: ExtendsMovableBox): ExtendsMovableBox => {
+  const angle = rotationAngle.value;
+  if (!angle || !props.limitAreaForParent || !state.parentElement) return candidate;
+  const edges = getAreaEdges();
+  const areaWidth = Math.max(0, edges.maxRight - edges.minLeft);
+  const areaHeight = Math.max(0, edges.maxBottom - edges.minTop);
+  const rad = angleToRadians(angle);
+  const cosA = Math.abs(Math.cos(rad));
+  const sinA = Math.abs(Math.sin(rad));
+  let width = asNumber(candidate.width);
+  let height = asNumber(candidate.height);
+  // Two passes: reducing one span relaxes the constraint checked in the other pass.
+  for (let pass = 0; pass < 2; pass += 1) {
+    if (cosA * width + sinA * height > areaWidth) {
+      if (cosA >= sinA) width = Math.max(0, (areaWidth - sinA * height) / (cosA || 1));
+      else height = Math.max(0, (areaWidth - cosA * width) / (sinA || 1));
+    }
+    if (sinA * width + cosA * height > areaHeight) {
+      if (sinA >= cosA) width = Math.max(0, (areaHeight - cosA * height) / (sinA || 1));
+      else height = Math.max(0, (areaHeight - sinA * width) / (cosA || 1));
+    }
+  }
+  return { ...candidate, width: roundValue(width), height: roundValue(height) };
 };
 
 const reportOutOfBounds = (rect: ExtendsMovableBox) => {
@@ -857,8 +890,11 @@ const processInteraction = (source: PointerEvent) => {
       localDelta.y
     );
     // resizeFromHandle constrains sizes against local edges; rotated boxes additionally
-    // get their AABB clamped into the area.
-    if (rotationAngle.value) candidate = clampPosition(candidate);
+    // fit their AABB into the area and get it clamped into position.
+    if (rotationAngle.value) {
+      candidate = fitRotatedSizeToArea(candidate);
+      candidate = clampPosition(candidate);
+    }
     reportOutOfBounds(candidate);
     const collisionResolved = resolveCollision(candidate, previous);
     if (collisionResolved) {
@@ -1121,7 +1157,10 @@ const resizeWithKeyboard = (
   const deltaY = direction === 'top' ? -distance : direction === 'bottom' ? distance : 0;
   const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
   let candidate = resizeFromHandle(previous, handle, localDelta.x, localDelta.y);
-  if (rotationAngle.value) candidate = clampPosition(candidate);
+  if (rotationAngle.value) {
+    candidate = fitRotatedSizeToArea(candidate);
+    candidate = clampPosition(candidate);
+  }
   reportOutOfBounds(candidate);
   const collisionResolved = resolveCollision(candidate, previous);
   if (!collisionResolved || sameRect(collisionResolved, previous)) return;

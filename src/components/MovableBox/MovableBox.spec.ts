@@ -375,6 +375,47 @@ describe('MovableBox', () => {
     expect(update).toMatchObject({ width: 400, top: 150, height: 100 });
   });
 
+  it('scales the rotated rectangle down when its AABB exceeds the area itself', async () => {
+    // Dragging 300px would grow local width to 500; the 500-tall AABB cannot fit the
+    // 400px-tall area, so the size converges to the maximum that fits (400x100).
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 200, height: 100 }),
+      rotate: 90,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-mr');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 0, 300));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 300));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ width: 400, height: 100, top: 150 });
+  });
+
+  it('clamps rotated keyboard resize against the area through the AABB', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 200, height: 100 }),
+      rotate: 90,
+      limitAreaForParent: true,
+      active: true,
+      keyboardEnabled: true,
+      keyboardStep: 100
+    });
+    // Each Shift+ArrowDown adds 100 to the local width via the br anchor; four presses
+    // request 600 wide, which must converge to the 400 that fits the 400px area.
+    for (let index = 0; index < 4; index += 1) {
+      await wrapper.get('.auto-draggable').trigger('keydown', {
+        key: 'ArrowDown',
+        shiftKey: true
+      });
+    }
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ width: 400, height: 100, top: 150 });
+  });
+
   it('honors transformOrigin in the rotated geometry', async () => {
     // 120x80 box at (100, 100) rotated 90deg around its top-left corner: the visual
     // AABB is (20, 100, 80, 120). With the area 500x400, dragging right must stop the

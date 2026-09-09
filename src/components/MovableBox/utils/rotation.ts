@@ -57,8 +57,10 @@ export const resolveTransformOrigin = (
 ): TransformOrigin => {
   const fallback: TransformOrigin = { x: width / 2, y: height / 2 };
   if (!spec) return fallback;
-  const parts = spec.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (parts.length === 0 || parts.length > 2) return fallback;
+  // More than two tokens (e.g. a z offset) or calc()/rem units are outside the
+  // supported subset; the first two tokens are still honored.
+  const parts = spec.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 2);
+  if (parts.length === 0) return fallback;
 
   let x: number | null = null;
   let y: number | null = null;
