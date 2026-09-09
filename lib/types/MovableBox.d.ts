@@ -103,6 +103,10 @@ export interface MovableBoxProps<T extends object = object> {
     snapFilter?: (target: SnapTarget, axis: 'horizontal' | 'vertical') => boolean;
     /** Strategy consultation order per axis. Default: alignment wins over spacing. */
     snapPriority?: SnapStrategy[];
+    /** Clockwise rotation in degrees; bounds, snapping, and collision use the rotated AABB. */
+    rotate?: number | string;
+    /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
+    transformOrigin?: string;
     collisionEnabled?: boolean;
     allowOverlap?: boolean;
     snapTargets?: SnapTarget[];

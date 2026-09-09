@@ -170,6 +170,16 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     };
     /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
     memberId: StringConstructor;
+    /** Clockwise rotation in degrees; geometry uses the rotated AABB (see README). */
+    rotate: {
+        type: PropType<string | number>;
+        default: number;
+    };
+    /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
+    transformOrigin: {
+        type: StringConstructor;
+        default: string;
+    };
 }>, {
     getConfig: () => ExtendsMovableBox<object>;
     setPosition: (left: number, top: number) => void;
@@ -366,6 +376,16 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     };
     /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
     memberId: StringConstructor;
+    /** Clockwise rotation in degrees; geometry uses the rotated AABB (see README). */
+    rotate: {
+        type: PropType<string | number>;
+        default: number;
+    };
+    /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
+    transformOrigin: {
+        type: StringConstructor;
+        default: string;
+    };
 }>> & Readonly<{
     onGuides?: ((data: GuidesEventPayload) => any) | undefined;
     onDblclick?: ((source: MouseEvent) => any) | undefined;
@@ -423,6 +443,8 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     collisionEnabled: boolean;
     allowOverlap: boolean;
     snapTargets: SnapTarget[];
+    rotate: string | number;
+    transformOrigin: string;
 }, {}, {}, {}, string, import('vue').ComponentProvideOptions, true, {}, any>, {
     default?(_: {}): any;
 }>;

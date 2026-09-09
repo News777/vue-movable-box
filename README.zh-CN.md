@@ -369,6 +369,31 @@ boxRef.value.cancelInteraction()
 吸附解析是确定的：每根轴按 `snapPriority` 顺序咨询策略，策略内取阈值内最近候选，
 距离相等时按 `snapTargets` 数组顺序取胜。
 
+### 旋转与变换原点
+
+```vue
+<MovableBox
+  v-model="config"
+  :rotate="45"
+  transform-origin="center"
+/>
+```
+
+`rotate` 接受角度（顺时针，等同 CSS `rotate()`），`transformOrigin` 接受任意 CSS
+transform-origin（`'center'`、`'top left'`、`'50% 50%'`）。旋转下的缩放依然正确：指针位移会
+映射到方框的本地坐标系，缩放手柄始终跟随旋转后的边缘，方向键也沿旋转后的轴向缩放。
+
+旋转几何语义（在 3.0.0 中定义）：
+
+- **边界约束**以旋转后矩形的轴对齐包围盒（AABB）为准；`out-of-bounds` 同样按 AABB 判定。
+- **元素吸附**（对齐与等间距）在 AABB 上求值，吸附位移按 1:1 映射回未旋转矩形。
+- **碰撞**以 AABB 与未旋转的 `snapTargets` 矩形求交。
+- **网格吸附**继续对齐未旋转的左上角。
+- 平移（指针拖拽、键盘移动、组合移动）不受旋转影响。
+- 旋转几何假定 `px` 单位；`%` 单位下 AABB 计算在百分比空间近似进行。
+
+`rotate: 0` 的方框与 2.x 行为完全一致，升级无需改动。
+
 ### 键盘控制
 
 ```vue

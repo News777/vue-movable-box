@@ -386,6 +386,35 @@ Snap resolution is deterministic: strategies are consulted in `snapPriority` ord
 nearest candidate inside `snapThreshold` wins inside a strategy, and equal distances resolve by
 `snapTargets` order.
 
+### Rotation and Transform Origin
+
+```vue
+<MovableBox
+  v-model="config"
+  :rotate="45"
+  transform-origin="center"
+/>
+```
+
+`rotate` accepts degrees (clockwise, CSS `rotate()` semantics) and `transformOrigin` accepts any
+CSS transform-origin (`'center'`, `'top left'`, `'50% 50%'`). Resizing stays correct under
+rotation: pointer deltas are mapped into the box's local space, so handles keep following their
+rotated edges, and arrow keys resize along the rotated axes.
+
+Rotated geometry semantics (defined in 3.0.0):
+
+- **Bounds clamping** keeps the axis-aligned bounding box (AABB) of the rotated rectangle inside
+  the bounds area; `out-of-bounds` fires against the AABB as well.
+- **Element snapping** (alignment and equal spacing) evaluates the AABB; the resulting shift is
+  applied 1:1 to the unrotated rectangle.
+- **Collision** checks the AABB against the unrotated `snapTargets` rectangles.
+- **Grid snapping** continues to align the unrotated top-left corner.
+- Translation (pointer drag, keyboard move, group movement) is unaffected by rotation.
+- Rotation geometry assumes `px` units; with `%` units the AABB math operates in percentage space
+  as an approximation.
+
+Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
+
 ### Keyboard Control
 
 ```vue

@@ -71,6 +71,7 @@ import {
 } from 'vue';
 import { useCollision, useGrid, useKeyboard, useSnap } from './composables';
 import { asNumber, clamp, sameRect } from './core/box-geometry';
+import { deltaToLocal, normalizeAngle, rotatedAABB } from './utils/rotation';
 import { GROUP_CONTEXT_KEY, type GroupMemberApi } from '../MovableGroup/context';
 import type {
   BoundsMargin,
@@ -168,7 +169,11 @@ const props = defineProps({
   allowOverlap: { type: Boolean, default: false },
   snapTargets: { type: Array as PropType<SnapTarget[]>, default: () => [] },
   /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
-  memberId: String
+  memberId: String,
+  /** Clockwise rotation in degrees; geometry uses the rotated AABB (see README). */
+  rotate: { type: [Number, String] as PropType<number | string>, default: 0 },
+  /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
+  transformOrigin: { type: String, default: 'center' }
 });
 
 const emit = defineEmits<{
@@ -282,6 +287,7 @@ watch(
 
 const isResizable = computed(() => props.resizable ?? props.resizeable ?? true);
 const isPercent = computed(() => props.unitType === '%');
+const rotationAngle = computed(() => normalizeAngle(props.rotate));
 
 const movableStyle = computed<CSSProperties>(() => ({
   '--movable-box-theme': props.theme,
@@ -304,7 +310,10 @@ const movableStyle = computed<CSSProperties>(() => ({
         : 'default',
   pointerEvents: props.disabled ? 'none' : 'auto',
   opacity: state.active ? 1 : 0.9,
-  transform: 'translateZ(0)',
+  transform: rotationAngle.value
+    ? `rotate(${rotationAngle.value}deg) translateZ(0)`
+    : 'translateZ(0)',
+  transformOrigin: props.transformOrigin,
   willChange: state.isDragging || state.isResizing ? 'left, top, width, height' : 'auto',
   transition:
     props.enableTransition && !state.isDragging && !state.isResizing
@@ -379,13 +388,29 @@ const getPositionBounds = (rect: ExtendsMovableBox) => {
   };
 };
 
+const numericPlane = (rect: ExtendsMovableBox) => ({
+  left: asNumber(rect.left),
+  top: asNumber(rect.top),
+  width: asNumber(rect.width),
+  height: asNumber(rect.height)
+});
+
+// Rotated boxes are probed as their axis-aligned bounding box for bounds, snapping,
+// and collision; shifts on the probe map 1:1 back onto the unrotated rectangle.
+const geometryProbe = (rect: ExtendsMovableBox) => {
+  const plane = numericPlane(rect);
+  const angle = rotationAngle.value;
+  return angle ? rotatedAABB(plane, angle) : plane;
+};
+
 const reportOutOfBounds = (rect: ExtendsMovableBox) => {
   if (!state.parentElement) return;
   const edges = getAreaEdges();
-  const left = asNumber(rect.left);
-  const top = asNumber(rect.top);
-  const right = left + asNumber(rect.width);
-  const bottom = top + asNumber(rect.height);
+  const probe = geometryProbe(rect);
+  const left = probe.left;
+  const top = probe.top;
+  const right = left + probe.width;
+  const bottom = top + probe.height;
   if (left < edges.minLeft) emit('out-of-bounds', 'left');
   if (right > edges.maxRight) emit('out-of-bounds', 'right');
   if (top < edges.minTop) emit('out-of-bounds', 'top');
@@ -394,11 +419,14 @@ const reportOutOfBounds = (rect: ExtendsMovableBox) => {
 
 const clampPosition = (rect: ExtendsMovableBox) => {
   if (!props.limitAreaForParent || !state.parentElement) return rect;
-  const bounds = getPositionBounds(rect);
+  const probe = geometryProbe(rect);
+  const bounds = getPositionBounds(probe as ExtendsMovableBox);
+  const clampedLeft = clamp(probe.left, bounds.minLeft, bounds.maxLeft);
+  const clampedTop = clamp(probe.top, bounds.minTop, bounds.maxTop);
   return {
     ...rect,
-    left: clamp(asNumber(rect.left), bounds.minLeft, bounds.maxLeft),
-    top: clamp(asNumber(rect.top), bounds.minTop, bounds.maxTop)
+    left: asNumber(rect.left) + (clampedLeft - probe.left),
+    top: asNumber(rect.top) + (clampedTop - probe.top)
   };
 };
 
@@ -516,21 +544,15 @@ const clearAdvancedState = () => {
   collision.clearCollisions();
 };
 
-const numericRect = (rect: ExtendsMovableBox) => ({
-  left: asNumber(rect.left),
-  top: asNumber(rect.top),
-  width: asNumber(rect.width),
-  height: asNumber(rect.height)
-});
-
 const resolveCollision = (
   candidate: ExtendsMovableBox,
   previous: ExtendsMovableBox,
   resolution: 'path' | 'slide' = 'path'
 ) => {
+  const candidateProbe = geometryProbe(candidate);
   const result = collision.resolveCandidate(
-    numericRect(candidate),
-    numericRect(previous),
+    candidateProbe,
+    geometryProbe(previous),
     props.snapTargets,
     rect => ({
       left: roundValue(rect.left),
@@ -541,7 +563,15 @@ const resolveCollision = (
     resolution
   );
   publishCollision(result);
-  return result.accepted ? ({ ...candidate, ...result.rect } as ExtendsMovableBox) : null;
+  if (!result.accepted) return null;
+  if (rotationAngle.value) {
+    return {
+      ...candidate,
+      left: asNumber(candidate.left) + (result.rect.left - candidateProbe.left),
+      top: asNumber(candidate.top) + (result.rect.top - candidateProbe.top)
+    };
+  }
+  return { ...candidate, ...result.rect } as ExtendsMovableBox;
 };
 
 const applyInteractivePosition = (
@@ -555,7 +585,7 @@ const applyInteractivePosition = (
   if (axes.horizontal) next.left = grid.snapValue(asNumber(candidate.left));
   if (axes.vertical) next.top = grid.snapValue(asNumber(candidate.top));
   let snapResult: SnapResult = {
-    ...numericRect(next),
+    ...numericPlane(next),
     snapped: false,
     points: [],
     targetIds: {},
@@ -564,8 +594,15 @@ const applyInteractivePosition = (
   };
 
   if (useElementSnap) {
-    snapResult = snap.resolveSnap(numericRect(next), props.snapTargets, axes);
-    next = { ...next, left: snapResult.left, top: snapResult.top };
+    const probe = geometryProbe(next);
+    snapResult = snap.resolveSnap(probe, props.snapTargets, axes);
+    next = rotationAngle.value
+      ? {
+          ...next,
+          left: asNumber(next.left) + (snapResult.left - probe.left),
+          top: asNumber(next.top) + (snapResult.top - probe.top)
+        }
+      : { ...next, left: snapResult.left, top: snapResult.top };
   } else {
     snap.clearGuides();
   }
@@ -794,7 +831,7 @@ const processInteraction = (source: PointerEvent) => {
 
   if (state.isResizing && state.handle) {
     publishSnap({
-      ...numericRect(previous),
+      ...numericPlane(previous),
       snapped: false,
       points: [],
       targetIds: {},
@@ -802,7 +839,8 @@ const processInteraction = (source: PointerEvent) => {
       spacing: []
     });
     snap.clearGuides();
-    const candidate = resizeFromHandle(state.beforeInteraction, state.handle, deltaX, deltaY);
+    const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
+    const candidate = resizeFromHandle(state.beforeInteraction, state.handle, localDelta.x, localDelta.y);
     reportOutOfBounds(candidate);
     const collisionResolved = resolveCollision(candidate, previous);
     if (collisionResolved) {
@@ -1063,7 +1101,8 @@ const resizeWithKeyboard = (
   if (props.canResize?.(cloneRect(previous), handle) === false) return;
   const deltaX = direction === 'left' ? -distance : direction === 'right' ? distance : 0;
   const deltaY = direction === 'top' ? -distance : direction === 'bottom' ? distance : 0;
-  const candidate = resizeFromHandle(previous, handle, deltaX, deltaY);
+  const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
+  const candidate = resizeFromHandle(previous, handle, localDelta.x, localDelta.y);
   reportOutOfBounds(candidate);
   const collisionResolved = resolveCollision(candidate, previous);
   if (!collisionResolved || sameRect(collisionResolved, previous)) return;

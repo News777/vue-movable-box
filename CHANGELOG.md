@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-09
+
+> 主要版本：集中收敛几何模型语义变更（见下方旋转语义）。`rotate` 保持 0 的消费者行为与 2.2.0 完全一致，升级无需改动。
+
+### Added
+- 新增 `rotate` 属性（顺时针角度，等同 CSS `rotate()`）与 `transformOrigin` 属性（任意 CSS transform-origin），支持方框旋转与变换原点控制
+- 旋转下的缩放映射：指针缩放位移自动映射到方框本地坐标系，缩放手柄跟随旋转后的边缘；键盘方向键沿旋转后的手柄轴向缩放
+- 新增 `rotate` / `deltaToLocal` / `normalizeAngle` 几何工具（内部使用，含 5 项单元测试）
+- `examples` 演示新增"旋转"滑块，实时写入选中方框的自定义 `rotate` 字段并驱动组件
+
+### Changed
+- 旋转方框（`rotate ≠ 0`）的几何语义（本次主要版本收敛的破坏性变更）：
+  - 边界约束与 `out-of-bounds` 按旋转矩形的轴对齐包围盒（AABB）判定
+  - 元素吸附（对齐与等间距）在 AABB 上求值，位移 1:1 映射回未旋转矩形
+  - 碰撞检测以 AABB 与未旋转 `snapTargets` 求交
+  - 网格吸附继续对齐未旋转左上角；平移（拖拽/键盘/组合移动）不受旋转影响
+  - 旋转几何假定 `px` 单位，`%` 单位下按百分比空间近似
+
 ## [2.2.0] - 2026-09-09
 
 ### Added

@@ -196,3 +196,30 @@ test('unselected group member is left in place while the selection follows the l
   expect(await styleNumber(unselected, 'left')).toBe(unselectedLeft);
   await expect(page.locator('.group-selected-label')).toContainText('g1, g2');
 });
+
+test('rotation applies as CSS transform and rotated boxes still drag cleanly', async ({ page }) => {
+  const box = page.locator('.auto-draggable').first();
+
+  const slider = page.locator('.control-row', { hasText: '旋转' }).locator('input[type="range"]');
+  await slider.fill('45');
+  await expect(box).toHaveAttribute('style', /rotate\(45deg\)/);
+
+  await box.scrollIntoViewIfNeeded();
+  const before = await styleNumber(box, 'left');
+  // The demo canvas zooms to 0.6, so a 40px visual drag moves left by 40 / 0.6 in
+  // the box's coordinate space.
+  const scale = Number(
+    await page.locator('.control-row', { hasText: '缩放比例' }).locator('input').inputValue()
+  );
+  const bounds = await box.boundingBox();
+  expect(bounds).toBeTruthy();
+  await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds!.x + bounds!.width / 2 + 40, bounds!.y + bounds!.height / 2 + 20, {
+    steps: 4
+  });
+  await page.mouse.up();
+
+  expect(await styleNumber(box, 'left')).toBeCloseTo(before + 40 / scale, 0);
+  await expect(box).toHaveAttribute('style', /rotate\(45deg\)/);
+});

@@ -1,7 +1,7 @@
 /**
  * VueMovableBox - 可拖拽可调整大小的 Vue 3 组件
  * @description A draggable and resizable container component for Vue 3
- * @version 2.2.0
+ * @version 3.0.0
  */
 
 import type { App } from 'vue';
@@ -52,7 +52,7 @@ const install = (app: App) => {
 // 默认导出
 export default {
   name,
-  version: '2.2.0',
+  version: '3.0.0',
   install
 };
 

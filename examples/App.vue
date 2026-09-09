@@ -51,6 +51,18 @@
           <input type="checkbox" v-model="config.ratioLock" />
         </div>
         <div class="control-row">
+          <label>旋转 (选中方框):</label>
+          <input
+            type="range"
+            min="-180"
+            max="180"
+            step="5"
+            :value="Number(selectedBox?.data.rotate ?? 0)"
+            @input="onRotateInput"
+          />
+          <span>{{ Number(selectedBox?.data.rotate ?? 0) }}°</span>
+        </div>
+        <div class="control-row">
           <label>禁用组件:</label>
           <input type="checkbox" v-model="config.disabled" />
         </div>
@@ -322,6 +334,7 @@
             :can-resize="config.useResizeGuard ? resizeGuard : undefined"
             :enable-transition="config.enableTransition"
             :keyboard-enabled="config.keyboardEnabled"
+            :rotate="Number(box.data.rotate ?? 0)"
             :disabled-user-select="config.disabledUserSelect"
             :bounds-margin="boundsMargin"
             @drag-start="onDragStart"
@@ -440,6 +453,7 @@ interface BoxData {
     width: number;
     height: number;
     zIndex: number;
+    rotate?: number;
   };
   color?: string;
 }
@@ -551,6 +565,15 @@ const getSnapTargets = (uid: string): SnapTarget[] =>
 // 选中状态
 const selectedUid = ref<string>('Box-1');
 const selectedBox = computed(() => boxes.value.find(b => b.uid === selectedUid.value));
+
+// 旋转演示：写入选中方框的自定义字段 rotate，再通过 :rotate 驱动组件
+const onRotateInput = (event: Event) => {
+  const value = Number((event.target as HTMLInputElement).value);
+  const target = selectedBox.value;
+  if (!target) return;
+  target.data.rotate = value;
+  addLog('rotate', `${target.uid} 旋转到 ${value}°`);
+};
 
 // 日志
 interface LogItem {

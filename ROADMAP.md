@@ -83,6 +83,9 @@ does not also change the component's geometry model.
 
 ## 3.0.0 — Transform model / 变换模型
 
+> Shipped in v3.0.0 (2026-09-09): `rotate` and `transformOrigin` props with AABB-based bounds,
+> snapping, and collision semantics for rotated boxes; see `CHANGELOG.md`.
+
 - Add rotation and transform-origin support.
   增加旋转和变换原点支持。
 - Replace axis-aligned-only geometry where necessary and define rotated bounds, snapping, and

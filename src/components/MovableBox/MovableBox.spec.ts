@@ -309,6 +309,67 @@ describe('MovableBox', () => {
     document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
   });
 
+  it('applies the rotation and transform origin as CSS', async () => {
+    const wrapper = mountBox({ rotate: 45, transformOrigin: 'top left' });
+    const style = wrapper.get('.auto-draggable').attributes('style');
+    expect(style).toContain('rotate(45deg)');
+    expect(style).toContain('transform-origin: top left');
+
+    await wrapper.setProps({ rotate: 'bad' });
+    expect(wrapper.get('.auto-draggable').attributes('style')).not.toContain('rotate');
+  });
+
+  it('clamps rotated boxes by their axis-aligned bounding box', async () => {
+    // 100x80 box rotated 90 degrees has a 80x100 AABB; with limitAreaForParent the
+    // parent is 500x400, so the AABB right edge (left + 10 + 80) stops at 500.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 480, top: 20, width: 100, height: 80 }),
+      rotate: 90,
+      limitAreaForParent: true
+    });
+    await pointerDrag(wrapper, [0, 0], [200, 0]);
+
+    // Dragging right by 200 would put the unrotated left at 680; the AABB left clamps
+    // to maxLeft = 500 - 80 = 420, which shifts the local rect back to 410.
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ left: 410 });
+  });
+
+  it('maps pointer resize deltas into the rotated local space', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 100, top: 100, width: 120, height: 80 }),
+      rotate: 90,
+      limitAreaForParent: false
+    });
+    const handle = wrapper.get('.handle-br');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 20, 0));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 20, 0));
+    await nextTick();
+
+    // Screen +20px right maps to local -20px on y for a 90-degree rotation, so the
+    // br handle shrinks height; width stays untouched.
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ width: 120, height: 60 });
+  });
+
+  it('snaps the rotated bounding box and shifts the local rect accordingly', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 20, top: 500, width: 100, height: 50 }),
+      rotate: 90,
+      snapToElements: true,
+      snapThreshold: 20,
+      limitAreaForParent: false,
+      snapTargets: [{ id: 'edge', left: 60, top: 100, width: 50, height: 50 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [1, 0], '.auto-draggable', false);
+
+    // AABB of the rotated box is 50 wide starting at left 45; snapping its left edge
+    // to the target's left (60) shifts the local rect by +15 to 35.
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ left: 35 });
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+  });
+
   it('emits snap again when the snapped coordinate changes', async () => {
     const wrapper = mountBox({
       modelValue: makeModel({ left: 8, top: 100, width: 20, height: 20 }),
