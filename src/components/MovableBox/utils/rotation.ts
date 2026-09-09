@@ -74,7 +74,7 @@ export const resolveTransformOrigin = (
     else if (part === 'right') x = width;
     else if (part === 'top') y = 0;
     else if (part === 'bottom') y = height;
-    else if (part === 'center') assign(width / 2);
+    else if (part === 'center') assign(x === null ? width / 2 : height / 2);
     else if (part.endsWith('%')) {
       const percent = Number(part.slice(0, -1));
       if (!Number.isFinite(percent)) return fallback;

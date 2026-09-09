@@ -411,31 +411,57 @@ const geometryProbe = (rect: ExtendsMovableBox) => {
   return rotatedAABBAt(plane, angle, origin);
 };
 
-// Shrinks an over-large rotated rectangle so its AABB can fit the area; clamping alone
-// could only translate it, leaving part of the box outside the bounds.
-const fitRotatedSizeToArea = (candidate: ExtendsMovableBox): ExtendsMovableBox => {
+// Shrinks an over-large rotated rectangle so its AABB fits the area; clamping alone
+// could only translate it, leaving part of the box outside the bounds. Reductions
+// prefer the dragged axis (corner handles reduce both), and ratioLock scales both
+// dimensions with one factor to preserve the locked ratio.
+const fitRotatedSizeToArea = (
+  candidate: ExtendsMovableBox,
+  handle: HandlePosition | null
+): ExtendsMovableBox => {
   const angle = rotationAngle.value;
   if (!angle || !props.limitAreaForParent || !state.parentElement) return candidate;
   const edges = getAreaEdges();
   const areaWidth = Math.max(0, edges.maxRight - edges.minLeft);
   const areaHeight = Math.max(0, edges.maxBottom - edges.minTop);
   const rad = angleToRadians(angle);
-  const cosA = Math.abs(Math.cos(rad));
-  const sinA = Math.abs(Math.sin(rad));
-  let width = asNumber(candidate.width);
-  let height = asNumber(candidate.height);
-  // Two passes: reducing one span relaxes the constraint checked in the other pass.
-  for (let pass = 0; pass < 2; pass += 1) {
-    if (cosA * width + sinA * height > areaWidth) {
-      if (cosA >= sinA) width = Math.max(0, (areaWidth - sinA * height) / (cosA || 1));
-      else height = Math.max(0, (areaWidth - cosA * width) / (sinA || 1));
-    }
-    if (sinA * width + cosA * height > areaHeight) {
-      if (sinA >= cosA) width = Math.max(0, (areaHeight - cosA * height) / (sinA || 1));
-      else height = Math.max(0, (areaHeight - sinA * width) / (cosA || 1));
-    }
+  // Exact right angles leave ~1e-17 residues; zero them so the coefficient guards below
+  // treat 90/180-degree spans as truly decoupled.
+  const cosA = Math.abs(Math.cos(rad)) < 1e-9 ? 0 : Math.abs(Math.cos(rad));
+  const sinA = Math.abs(Math.sin(rad)) < 1e-9 ? 0 : Math.abs(Math.sin(rad));
+  const width = asNumber(candidate.width);
+  const height = asNumber(candidate.height);
+  const spanWidth = cosA * width + sinA * height;
+  const spanHeight = sinA * width + cosA * height;
+
+  if (props.ratioLock) {
+    const factor = Math.min(
+      1,
+      spanWidth > areaWidth ? areaWidth / spanWidth : 1,
+      spanHeight > areaHeight ? areaHeight / spanHeight : 1
+    );
+    if (factor >= 1) return candidate;
+    return { ...candidate, width: roundValue(width * factor), height: roundValue(height * factor) };
   }
-  return { ...candidate, width: roundValue(width), height: roundValue(height) };
+
+  // Solve each span constraint for the dimension it can still limit; a span without a
+  // width (or height) term at this angle imposes no limit on that axis.
+  const widthLimit = Math.min(
+    cosA > 0 ? (areaWidth - sinA * height) / cosA : Infinity,
+    sinA > 0 ? (areaHeight - cosA * height) / sinA : Infinity
+  );
+  const heightLimit = Math.min(
+    sinA > 0 ? (areaWidth - cosA * width) / sinA : Infinity,
+    cosA > 0 ? (areaHeight - sinA * width) / cosA : Infinity
+  );
+  const minWidth = Math.max(0, valIsNaN(props.minWidth, 0));
+  const minHeight = Math.max(0, valIsNaN(props.minHeight, 0));
+  const affectsWidth = handle === null || handle.includes('l') || handle.includes('r');
+  const affectsHeight = handle === null || handle.includes('t') || handle.includes('b');
+  const nextWidth = affectsWidth ? Math.max(minWidth, Math.min(width, widthLimit)) : width;
+  const nextHeight = affectsHeight ? Math.max(minHeight, Math.min(height, heightLimit)) : height;
+  if (nextWidth === width && nextHeight === height) return candidate;
+  return { ...candidate, width: roundValue(nextWidth), height: roundValue(nextHeight) };
 };
 
 const reportOutOfBounds = (rect: ExtendsMovableBox) => {
@@ -892,7 +918,7 @@ const processInteraction = (source: PointerEvent) => {
     // resizeFromHandle constrains sizes against local edges; rotated boxes additionally
     // fit their AABB into the area and get it clamped into position.
     if (rotationAngle.value) {
-      candidate = fitRotatedSizeToArea(candidate);
+      candidate = fitRotatedSizeToArea(candidate, state.handle);
       candidate = clampPosition(candidate);
     }
     reportOutOfBounds(candidate);
@@ -1158,7 +1184,7 @@ const resizeWithKeyboard = (
   const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
   let candidate = resizeFromHandle(previous, handle, localDelta.x, localDelta.y);
   if (rotationAngle.value) {
-    candidate = fitRotatedSizeToArea(candidate);
+    candidate = fitRotatedSizeToArea(candidate, handle);
     candidate = clampPosition(candidate);
   }
   reportOutOfBounds(candidate);

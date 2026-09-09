@@ -65,6 +65,11 @@ describe('rotation utilities', () => {
     expect(resolveTransformOrigin('50% 25%', 120, 80)).toEqual({ x: 60, y: 20 });
     expect(resolveTransformOrigin('10px 20px', 120, 80)).toEqual({ x: 10, y: 20 });
     expect(resolveTransformOrigin('100% 100%', 120, 80)).toEqual({ x: 120, y: 80 });
+    // A third (z) token is ignored; unitless prefixes of other units parse as numbers;
+    // calc() cannot parse and falls back to center.
+    expect(resolveTransformOrigin('50% 50% 5px', 120, 80)).toEqual({ x: 60, y: 40 });
+    expect(resolveTransformOrigin('5rem center', 120, 80)).toEqual({ x: 5, y: 40 });
+    expect(resolveTransformOrigin('calc(50%) top', 120, 80)).toEqual({ x: 60, y: 40 });
   });
 
   it('shifts the AABB for non-center transform origins and keeps translation equivariant', () => {
