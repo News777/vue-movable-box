@@ -17,7 +17,12 @@ export default defineConfig({
     dts({
       insertTypesEntry: true,
       cleanVueFileName: true,
-      include: ['src/index.ts', 'src/types/', 'src/components/MovableBox/MovableBox.vue'],
+      include: [
+        'src/index.ts',
+        'src/types/',
+        'src/components/MovableBox/MovableBox.vue',
+        'src/components/MovableGroup/MovableGroup.vue'
+      ],
       exclude: ['src/**/*.spec.ts'],
       outDir: 'lib',
       afterDiagnostic(diagnostics) {

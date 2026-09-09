@@ -59,6 +59,9 @@
 <script setup lang="ts" name="VueMovableBox">
 import {
   computed,
+  getCurrentInstance,
+  inject,
+  onMounted,
   onUnmounted,
   reactive,
   ref,
@@ -68,6 +71,7 @@ import {
 } from 'vue';
 import { useCollision, useGrid, useKeyboard, useSnap } from './composables';
 import { asNumber, clamp, sameRect } from './core/box-geometry';
+import { GROUP_CONTEXT_KEY, type GroupMemberApi } from '../MovableGroup/context';
 import type {
   BoundsMargin,
   CollisionEventPayload,
@@ -151,7 +155,9 @@ const props = defineProps({
   snapThreshold: { type: Number, default: 10 },
   collisionEnabled: { type: Boolean, default: false },
   allowOverlap: { type: Boolean, default: false },
-  snapTargets: { type: Array as PropType<SnapTarget[]>, default: () => [] }
+  snapTargets: { type: Array as PropType<SnapTarget[]>, default: () => [] },
+  /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
+  memberId: String
 });
 
 const emit = defineEmits<{
@@ -384,6 +390,23 @@ const clampPosition = (rect: ExtendsMovableBox) => {
     top: clamp(asNumber(rect.top), bounds.minTop, bounds.maxTop)
   };
 };
+
+// --- MovableGroup integration (inert when no MovableGroup surrounds the box) ---
+const groupContext = inject(GROUP_CONTEXT_KEY, null);
+const memberIdentity =
+  props.memberId ?? `member-${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
+let groupDragLeader = false;
+const memberApi: GroupMemberApi = {
+  getRect: () => cloneRect(internalRect.value),
+  translateTo: rect => {
+    commitRect(rect);
+  },
+  getAreaEdges: () => {
+    refreshArea();
+    return state.parentElement ? getAreaEdges() : null;
+  }
+};
+onMounted(() => groupContext?.registerMember(memberIdentity, memberApi));
 
 const roundValue = (value: number) =>
   props.isKeepDecimals
@@ -725,17 +748,20 @@ const processInteraction = (source: PointerEvent) => {
     if (!axes.horizontal) left = asNumber(start.left);
     if (!axes.vertical) top = asNumber(start.top);
 
-    const accepted = applyInteractivePosition(
-      { ...start, left: roundValue(left), top: roundValue(top) },
-      previous,
-      props.snapToElements,
-      axes,
-      start
-    );
+    const candidate = {
+      ...start,
+      left: roundValue(left),
+      top: roundValue(top)
+    };
+    let accepted = applyInteractivePosition(candidate, previous, props.snapToElements, axes, start);
+    if (accepted && groupDragLeader) {
+      accepted = groupContext?.constrainPosition(memberIdentity, accepted) ?? null;
+    }
     if (accepted) {
       const value = commitRect(accepted);
       emit('move', cloneRect(value));
       emit('drag', cloneRect(value));
+      if (groupDragLeader) groupContext?.notifyMoved(memberIdentity, cloneRect(value));
     }
   }
 
@@ -850,6 +876,7 @@ function closeInteraction() {
   state.isDragging = false;
   state.isResizing = false;
   state.handle = null;
+  groupDragLeader = false;
   removeInteractionListeners();
   releasePointer();
 }
@@ -867,12 +894,14 @@ function teardownInteraction() {
 
 function abortInteraction() {
   dropPendingFrame();
+  if (groupDragLeader) groupContext?.abortDrag(memberIdentity);
   teardownInteraction();
 }
 
 function cancelInteraction(source: Event | null = null) {
   const wasDragging = state.isDragging;
   const wasResizing = state.isResizing;
+  const wasGroupDrag = groupDragLeader;
   dropPendingFrame();
   closeInteraction();
   if (wasDragging || wasResizing) {
@@ -880,6 +909,7 @@ function cancelInteraction(source: Event | null = null) {
     commitRect(oldValue);
     if (wasDragging) emit('drag-cancel', source, oldValue, cloneRect(oldValue));
     else emit('resize-cancel', source, oldValue, cloneRect(oldValue));
+    if (wasDragging && wasGroupDrag) groupContext?.cancelDrag(memberIdentity, source);
   }
   finalizeInteraction();
 }
@@ -901,6 +931,9 @@ const startInteraction = (source: PointerEvent, handle: HandlePosition | null) =
   } else if (props.canDrag?.(currentRect) === false) {
     return;
   }
+
+  groupDragLeader = !handle && groupContext !== null;
+  if (groupDragLeader) groupContext?.beginDrag(memberIdentity, source);
 
   refreshArea();
   state.pointerId = typeof source.pointerId === 'number' ? source.pointerId : null;
@@ -963,6 +996,7 @@ function endInteraction(source: PointerEvent) {
 
   if (state.isDragging) {
     emit('drag-stop', source, cloneRect(state.beforeInteraction), cloneRect(internalRect.value));
+    if (groupDragLeader) groupContext?.endDrag(memberIdentity, source);
   }
   if (state.isResizing) {
     emit('resize-stop', source, cloneRect(state.beforeInteraction), cloneRect(internalRect.value));
@@ -1144,6 +1178,7 @@ defineExpose<MovableBoxExpose>({
 onUnmounted(() => {
   dropPendingFrame();
   closeInteraction();
+  groupContext?.unregisterMember(memberIdentity);
   // Skip finalizeInteraction during unmount: setActive(false) would emit 'inactive' while tearing down.
   clearAdvancedState();
 });

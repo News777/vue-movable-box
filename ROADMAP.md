@@ -53,6 +53,12 @@ does not also change the component's geometry model.
 
 ## 2.1.0 — Selection and groups / 多选与组合
 
+> Shipped in v2.1.0 (2026-09-09) via the renderless `MovableGroup` component; see `CHANGELOG.md`.
+> Performance baseline recorded with `pnpm bench` (desktop Chromium, 2026-09-09): dragging a
+> single box among 1,000 stays at ~60 fps; moving a fully-selected 1,000-member formation commits
+> every member per frame and averages ~60 ms/frame — batched DOM writes (transform-based group
+> rendering) remain future work for the spatial-index decision.
+
 - Introduce a separate `MovableGroup` or scene-level controller instead of adding group ownership to
   each `MovableBox`.
   通过独立的 `MovableGroup` 或场景控制器实现多选，避免让单个 `MovableBox` 承担组管理职责。

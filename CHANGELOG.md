@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-09
+
+### Added
+- 新增 `MovableGroup` 无渲染组合组件（含 `MovableGroupProps` / `MovableGroupExpose` 与 `move-start` / `move` / `move-stop` / `move-cancel` 批量事件类型）：拖拽选中成员带动整个选中组合按相同偏移移动，拖拽未选中成员自动切换选中；`v-model:selected` 支持受控选中
+- 组合共享边界（`sharedBounds`，默认开启）：以选中矩形并集约束在边界区域内，整个组合一起停在区域边缘；关闭后按成员各自约束
+- 确定的组合吸附/碰撞语义：吸附与碰撞仅对引导方框（指针下的方框）求值，组合成员之间互不吸附、互不碰撞
+- 不可变批量更新：`move-stop` 载荷包含每个成员的 `rect` 与 `startRect`；引导方框取消时 `move-cancel` 将整个组合还原到交互前矩形，强制中止则与单方框语义一致（不还原）
+- `MovableBox` 新增 `memberId` 属性用于组合内标识（缺省自动生成）；未包裹在 `MovableGroup` 内时行为与此前完全一致
+- `MovableGroup` 暴露 `getSelected()` / `select(ids?)` / `getMemberRects()` 方法
+- `examples` 演示新增多选组合画布；新增 `scripts/perf-bench.mjs`（`pnpm bench`）性能基准，覆盖 100 / 500 / 1000 方框的单框拖拽与全组合移动场景
+
 ## [2.0.0] - 2026-09-09
 
 > 正式版本：Pointer Events 迁移、触摸/触控笔兼容性及消费者升级路径已按预发布计划验证完毕。功能范围与 [2.0.0-beta.1] 一致。

@@ -472,6 +472,59 @@ const handleActive = (box, rect) => {
 </template>
 ```
 
+### Group Selection and Movement
+
+`MovableGroup` is a renderless wrapper that coordinates multiple `MovableBox` children. Dragging
+one selected member moves the whole selection by the same offset; dragging an unselected member
+replaces the selection. Give each member a stable `memberId`.
+
+```vue
+<script setup>
+import { ref } from 'vue'
+import { MovableBox, MovableGroup } from 'vue-movable-box'
+
+const rects = ref({
+  a: { left: 20, top: 20, width: 140, height: 90 },
+  b: { left: 220, top: 70, width: 140, height: 90 }
+})
+const selected = ref(['a', 'b'])
+
+const onMoveStop = (payload) => {
+  // Immutable batch payload: apply the whole formation atomically.
+  for (const record of payload.rects) {
+    console.log(record.id, record.startRect, '->', record.rect)
+  }
+}
+</script>
+
+<template>
+  <div class="canvas">
+    <MovableGroup v-model:selected="selected" @move-stop="onMoveStop">
+      <MovableBox
+        v-for="(rect, id) in rects"
+        :key="id"
+        :member-id="id"
+        v-model="rects[id]"
+      />
+    </MovableGroup>
+  </div>
+</template>
+```
+
+Group semantics:
+
+- **Shared bounds** (default): the union of the selected rectangles is clamped to the bounds
+  area, so the formation stops at the area edge together. Set `:shared-bounds="false"` to clamp
+  every member individually.
+- **Snapping and collision are evaluated for the leader only** — the box under the pointer.
+  Group members neither snap to nor collide with each other, which keeps payloads deterministic.
+- During a move every member emits its own `update:modelValue`; the group additionally emits
+  `move-start` / `move` / `move-stop` with batch payloads (`{ leaderId, source, rects }`), and
+  `move-cancel` restores the whole formation when the leader cancels.
+- Forced aborts (e.g. `disabled` toggled mid-drag) end the session without restore, matching
+  single-box semantics.
+- Exposed methods: `getSelected()`, `select(ids?)`, `getMemberRects()`.
+
 ## TypeScript
 
 Full TypeScript type support:

@@ -372,6 +372,44 @@
         <kbd>↑↓←→</kbd> 移动 | <kbd>Shift+↑↓←→</kbd> 缩放 | <kbd>Esc</kbd> 取消交互/取消激活
       </div>
     </div>
+
+    <!-- MovableGroup 多选与组合移动（独立画布，避免影响上方用例） -->
+    <div class="canvas-wrapper group-canvas-wrapper">
+      <div class="section">
+        <h3>👥 MovableGroup 多选与组合移动</h3>
+        <div class="btn-group">
+          <button @click="toggleGroupSelectAll">🔀 全选 / 清空</button>
+          <span class="group-selected-label">
+            当前选中: {{ groupSelected.join(', ') || '无' }}
+          </span>
+        </div>
+        <div class="canvas group-canvas">
+          <MovableGroup
+            :selected="groupSelected"
+            @update:selected="onGroupSelect"
+            @move-start="onGroupMoveStart"
+            @move-stop="onGroupMoveStop"
+            @move-cancel="onGroupMoveCancel"
+          >
+            <VueMovableBox
+              v-for="(rect, id) in groupBoxes"
+              :key="id"
+              :member-id="String(id)"
+              v-model="groupBoxes[id]"
+              :theme="themeColor"
+              :limit-area-for-parent="true"
+              :draggable="true"
+              :resizable="true"
+            >
+              <div class="box-content">
+                <div class="box-title">🧩 {{ id }}</div>
+              </div>
+            </VueMovableBox>
+          </MovableGroup>
+        </div>
+        <p class="group-hint">拖拽任一选中方框，整个选中组合一起移动；拖拽未选中方框会切换选中。Esc 取消并整体还原。</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -379,9 +417,13 @@
 import { ref, reactive, computed } from 'vue';
 import {
   MovableBox as VueMovableBox,
+  MovableGroup,
   type CollisionEventPayload,
   type DragDirection,
   type ExtendsMovableBox,
+  type GroupMoveCancelPayload,
+  type GroupMoveStartPayload,
+  type GroupMoveStopPayload,
   type GuidesEventPayload,
   type HandlePosition,
   type HandlesSet,
@@ -545,6 +587,33 @@ const canvasInnerStyle = computed(() => {
 const setBoxRef = (el: unknown, uid: string) => {
   if (el) boxRefs.set(uid, el as MovableBoxExpose);
   else boxRefs.delete(uid);
+};
+
+// MovableGroup 多选演示
+const groupBoxes = reactive<Record<string, ExtendsMovableBox>>({
+  g1: { left: 20, top: 20, width: 140, height: 90, zIndex: 1 },
+  g2: { left: 220, top: 70, width: 140, height: 90, zIndex: 2 },
+  g3: { left: 120, top: 190, width: 140, height: 90, zIndex: 3 }
+});
+const groupSelected = ref<string[]>(['g1', 'g2']);
+const onGroupSelect = (ids: string[]) => {
+  groupSelected.value = ids;
+  addLog('group-select', ids.length ? `选中 ${ids.join(', ')}` : '已清空选中');
+};
+const toggleGroupSelectAll = () => {
+  onGroupSelect(groupSelected.value.length === Object.keys(groupBoxes).length ? [] : Object.keys(groupBoxes));
+};
+const onGroupMoveStart = (payload: GroupMoveStartPayload) => {
+  addLog('group-move-start', `引导方框 ${payload.leaderId}，共 ${payload.rects.length} 个成员一起移动`, 'drag');
+};
+const onGroupMoveStop = (payload: GroupMoveStopPayload) => {
+  const detail = payload.rects
+    .map(record => `${record.id}@(${Math.round(Number(record.rect.left))},${Math.round(Number(record.rect.top))})`)
+    .join(' ');
+  addLog('group-move-stop', detail, 'success');
+};
+const onGroupMoveCancel = (payload: GroupMoveCancelPayload) => {
+  addLog('group-move-cancel', `组合已还原（引导方框 ${payload.leaderId}）`, 'warn');
 };
 
 // 添加方块
@@ -1087,6 +1156,34 @@ const onCollision = (data: CollisionEventPayload) => {
   text-align: center;
   padding: 20px;
   font-size: 12px;
+}
+
+.group-canvas-wrapper {
+  margin-top: 24px;
+
+  .group-canvas {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    height: 320px;
+    background: #fff;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .group-selected-label {
+    margin-left: 8px;
+    font-size: 12px;
+    color: #475569;
+    align-self: center;
+  }
+
+  .group-hint {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #64748b;
+  }
 }
 
 .log-count {

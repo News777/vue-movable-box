@@ -158,6 +158,8 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: PropType<SnapTarget[]>;
         default: () => never[];
     };
+    /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
+    memberId: StringConstructor;
 }>, {
     getConfig: () => ExtendsMovableBox<object>;
     setPosition: (left: number, top: number) => void;
@@ -342,6 +344,8 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: PropType<SnapTarget[]>;
         default: () => never[];
     };
+    /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
+    memberId: StringConstructor;
 }>> & Readonly<{
     onGuides?: ((data: GuidesEventPayload) => any) | undefined;
     onDblclick?: ((source: MouseEvent) => any) | undefined;

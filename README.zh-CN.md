@@ -458,6 +458,57 @@ const handleActive = (box, rect) => {
 </template>
 ```
 
+### 多选与组合移动
+
+`MovableGroup` 是无渲染的包裹组件，用于协调多个 `MovableBox` 子组件。拖拽任一选中的成员，
+整个选中组合按相同偏移一起移动；拖拽未选中的成员会切换选中。请为每个成员提供稳定的
+`memberId`。
+
+```vue
+<script setup>
+import { ref } from 'vue'
+import { MovableBox, MovableGroup } from 'vue-movable-box'
+
+const rects = ref({
+  a: { left: 20, top: 20, width: 140, height: 90 },
+  b: { left: 220, top: 70, width: 140, height: 90 }
+})
+const selected = ref(['a', 'b'])
+
+const onMoveStop = (payload) => {
+  // 不可变批量载荷：整个组合一次性应用。
+  for (const record of payload.rects) {
+    console.log(record.id, record.startRect, '->', record.rect)
+  }
+}
+</script>
+
+<template>
+  <div class="canvas">
+    <MovableGroup v-model:selected="selected" @move-stop="onMoveStop">
+      <MovableBox
+        v-for="(rect, id) in rects"
+        :key="id"
+        :member-id="id"
+        v-model="rects[id]"
+      />
+    </MovableGroup>
+  </div>
+</template>
+```
+
+组合语义：
+
+- **共享边界**（默认开启）：选中矩形的并集会被约束在边界区域内，整个组合一起停在区域边缘。
+  传入 `:shared-bounds="false"` 可改为每个成员各自约束。
+- **吸附与碰撞只对引导方框生效**（即指针下的方框）。组合成员之间互不吸附、互不碰撞，
+  保证事件载荷确定可预测。
+- 移动过程中每个成员照常触发各自的 `update:modelValue`；组合额外触发 `move-start` /
+  `move` / `move-stop` 批量事件（载荷为 `{ leaderId, source, rects }`）。引导方框取消时触发
+  `move-cancel`，整个组合还原到交互前的矩形。
+- 强制中止（例如拖拽中切换 `disabled`）会直接结束会话、不还原，与单方框语义一致。
+- 暴露方法：`getSelected()`、`select(ids?)`、`getMemberRects()`。
+
 ## TypeScript
 
 完整 TypeScript 类型支持：

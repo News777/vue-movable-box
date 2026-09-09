@@ -155,3 +155,44 @@ test('RTL keeps resize handles on their physical edges', async ({ page }) => {
   expect(await styleNumber(box, 'left')).toBeGreaterThan(initialLeft);
   expect(await styleNumber(box, 'width')).toBeLessThan(initialWidth);
 });
+
+test('group drag moves the whole selection and reports a batch payload', async ({ page }) => {
+  const leader = page.locator('.group-canvas .auto-draggable').nth(1);
+  const member = page.locator('.group-canvas .auto-draggable').first();
+  await leader.scrollIntoViewIfNeeded();
+
+  const memberLeftBefore = await styleNumber(member, 'left');
+  const memberTopBefore = await styleNumber(member, 'top');
+  const leaderBounds = await leader.boundingBox();
+  expect(leaderBounds).toBeTruthy();
+
+  await page.mouse.move(leaderBounds!.x + leaderBounds!.width / 2, leaderBounds!.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(leaderBounds!.x + leaderBounds!.width / 2 + 40, leaderBounds!.y + 50, {
+    steps: 5
+  });
+  await page.mouse.up();
+
+  expect(await styleNumber(member, 'left')).toBe(memberLeftBefore + 40);
+  expect(await styleNumber(member, 'top')).toBe(memberTopBefore + 30);
+  await expect(page.locator('.log-container')).toContainText('group-move-stop');
+  await expect(page.locator('.group-selected-label')).toContainText('g1, g2');
+});
+
+test('unselected group member is left in place while the selection follows the leader', async ({ page }) => {
+  const unselected = page.locator('.group-canvas .auto-draggable').nth(2);
+  const leader = page.locator('.group-canvas .auto-draggable').nth(1);
+  await leader.scrollIntoViewIfNeeded();
+
+  const unselectedLeft = await styleNumber(unselected, 'left');
+  const leaderBounds = await leader.boundingBox();
+  expect(leaderBounds).toBeTruthy();
+
+  await page.mouse.move(leaderBounds!.x + 30, leaderBounds!.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(leaderBounds!.x + 90, leaderBounds!.y + 20, { steps: 4 });
+  await page.mouse.up();
+
+  expect(await styleNumber(unselected, 'left')).toBe(unselectedLeft);
+  await expect(page.locator('.group-selected-label')).toContainText('g1, g2');
+});
