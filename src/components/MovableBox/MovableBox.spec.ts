@@ -401,10 +401,11 @@ describe('MovableBox', () => {
       limitAreaForParent: true,
       active: true,
       keyboardEnabled: true,
-      keyboardStep: 100
+      keyboardStep: 100,
+      resizeDirections: ['mr']
     });
     // At 90 degrees screen-down maps to local +width, so each Shift+ArrowDown adds 100
-    // to the local width via the br anchor; four presses request 600 wide, which must
+    // to the local width via the mr handle; four presses request 600 wide, which must
     // converge to the 400 that fits the 400px area.
     for (let index = 0; index < 4; index += 1) {
       await wrapper.get('.auto-draggable').trigger('keydown', {
@@ -419,7 +420,7 @@ describe('MovableBox', () => {
 
   it('shrinks only the dragged axis at intermediate angles and respects minHeight', async () => {
     // 300x300 box rotated 60 degrees, growing width via the mr handle. Solving both
-    // AABB spans for the dragged axis caps width at ~289; height must stay untouched.
+    // AABB spans for the dragged axis caps width at ~288; height must stay untouched.
     const wrapper = mountBox({
       modelValue: makeModel({ left: 0, top: 0, width: 300, height: 300 }),
       rotate: 60,
@@ -434,7 +435,29 @@ describe('MovableBox', () => {
     await nextTick();
 
     const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
-    expect(update).toMatchObject({ width: 289, height: 300 });
+    expect(update).toMatchObject({ width: 288, height: 300 });
+  });
+
+  it('never collapses a corner-handle resize that exceeds the area', async () => {
+    // Corner handles shrink along the drag ray (one uniform factor) instead of two
+    // independent projections, so an over-bounds 60-degree drag converges to a
+    // non-degenerate size rather than collapsing an axis to zero.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 300, height: 300 }),
+      rotate: 60,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-br');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 0, 200));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 200));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ width: 310, height: 262 });
+    expect(update.width).toBeGreaterThan(0);
+    expect(update.height).toBeGreaterThan(0);
   });
 
   it('keeps the locked ratio when a rotated resize exceeds the area', async () => {

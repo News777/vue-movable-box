@@ -412,8 +412,10 @@ Rotated geometry semantics (defined in 3.0.0):
 - **Bounds clamping** keeps the axis-aligned bounding box (AABB) of the rotated rectangle inside
   the bounds area; `out-of-bounds` fires against the AABB as well. The AABB honors
   `transformOrigin`, so non-center origins clamp at their true visual position. When a resize
-  grows the AABB beyond the area, the rectangle is shrunk — preferring the dragged axis, or
-  uniformly under `ratioLock` — until its AABB fits, and is then clamped into position.
+  grows the AABB beyond the area, the rectangle is shrunk — edge handles shrink only their
+  dragged axis, corner handles and `ratioLock` shrink uniformly along the drag ray — until its
+  AABB fits, and is then clamped into position. minWidth/minHeight floors win over fitting;
+  residual overflow is reported through `out-of-bounds`.
 - **Element snapping** (alignment and equal spacing) evaluates the AABB; the resulting shift is
   applied 1:1 to the unrotated rectangle.
 - **Collision** checks the AABB against the unrotated `snapTargets` rectangles.

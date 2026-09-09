@@ -391,8 +391,8 @@ boxRef.value.cancelInteraction()
 
 - **边界约束**以旋转后矩形的轴对齐包围盒（AABB）为准；`out-of-bounds` 同样按 AABB 判定。
   AABB 会考虑 `transformOrigin`，非 center 原点也按真实视觉位置钳制。缩放使 AABB 超出区域时，
-  方框会优先收缩被拖拽的轴（`ratioLock` 下按锁定比例等比收缩），直到 AABB 能放入区域，再
-  钳制到区域内。
+  边手柄只收缩被拖拽的轴，角手柄与 `ratioLock` 沿拖拽射线等比收缩，直到 AABB 能放入区域，再
+  钳制到区域内；`minWidth` / `minHeight` 下限优先于收缩，残余溢出通过 `out-of-bounds` 上报。
 - **元素吸附**（对齐与等间距）在 AABB 上求值，吸附位移按 1:1 映射回未旋转矩形。
 - **碰撞**以 AABB 与未旋转的 `snapTargets` 矩形求交。
 - **网格吸附**继续对齐未旋转的左上角。

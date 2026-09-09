@@ -413,8 +413,10 @@ const geometryProbe = (rect: ExtendsMovableBox) => {
 
 // Shrinks an over-large rotated rectangle so its AABB fits the area; clamping alone
 // could only translate it, leaving part of the box outside the bounds. Reductions
-// prefer the dragged axis (corner handles reduce both), and ratioLock scales both
-// dimensions with one factor to preserve the locked ratio.
+// prefer the dragged axis (edge handles shrink only that axis), while corner handles
+// and ratioLock shrink along the drag ray with one uniform factor. When a
+// minWidth/minHeight floor conflicts with fitting, the floor wins and the residual
+// overflow is reported through out-of-bounds.
 const fitRotatedSizeToArea = (
   candidate: ExtendsMovableBox,
   handle: HandlePosition | null
@@ -433,35 +435,54 @@ const fitRotatedSizeToArea = (
   const height = asNumber(candidate.height);
   const spanWidth = cosA * width + sinA * height;
   const spanHeight = sinA * width + cosA * height;
+  const minWidth = Math.max(0, valIsNaN(props.minWidth, 0));
+  const minHeight = Math.max(0, valIsNaN(props.minHeight, 0));
+  const affectsWidth = handle === null || handle.includes('l') || handle.includes('r');
+  const affectsHeight = handle === null || handle.includes('t') || handle.includes('b');
 
-  if (props.ratioLock) {
+  if (props.ratioLock || (affectsWidth && affectsHeight)) {
     const factor = Math.min(
       1,
       spanWidth > areaWidth ? areaWidth / spanWidth : 1,
       spanHeight > areaHeight ? areaHeight / spanHeight : 1
     );
-    if (factor >= 1) return candidate;
-    return { ...candidate, width: roundValue(width * factor), height: roundValue(height * factor) };
+    // Lift the factor so fitted sizes keep at least the configured floors; the floors
+    // may reintroduce a bounded overflow, which reportOutOfBounds then reports.
+    const lifted = Math.max(
+      factor,
+      width > 0 ? minWidth / width : 0,
+      height > 0 ? minHeight / height : 0
+    );
+    const fitted = Math.min(lifted, 1);
+    if (fitted >= 1) return candidate;
+    // Re-clamp after flooring: float round-off or fractional floors could otherwise
+    // land a pixel below minWidth/minHeight.
+    return {
+      ...candidate,
+      width: Math.max(minWidth, Math.floor(width * fitted)),
+      height: Math.max(minHeight, Math.floor(height * fitted))
+    };
   }
 
-  // Solve each span constraint for the dimension it can still limit; a span without a
-  // width (or height) term at this angle imposes no limit on that axis.
-  const widthLimit = Math.min(
-    cosA > 0 ? (areaWidth - sinA * height) / cosA : Infinity,
-    sinA > 0 ? (areaHeight - cosA * height) / sinA : Infinity
+  // Solve each span constraint for the dragged dimension; a span without a width (or
+  // height) term at this angle imposes no limit on that axis. Floor the solved limits
+  // so rounding cannot leave a sub-pixel overflow behind.
+  const widthLimit = Math.floor(
+    Math.min(
+      cosA > 0 ? (areaWidth - sinA * height) / cosA : Infinity,
+      sinA > 0 ? (areaHeight - cosA * height) / sinA : Infinity
+    )
   );
-  const heightLimit = Math.min(
-    sinA > 0 ? (areaWidth - cosA * width) / sinA : Infinity,
-    cosA > 0 ? (areaHeight - sinA * width) / cosA : Infinity
+  const heightLimit = Math.floor(
+    Math.min(
+      sinA > 0 ? (areaWidth - cosA * width) / sinA : Infinity,
+      cosA > 0 ? (areaHeight - sinA * width) / cosA : Infinity
+    )
   );
-  const minWidth = Math.max(0, valIsNaN(props.minWidth, 0));
-  const minHeight = Math.max(0, valIsNaN(props.minHeight, 0));
-  const affectsWidth = handle === null || handle.includes('l') || handle.includes('r');
-  const affectsHeight = handle === null || handle.includes('t') || handle.includes('b');
   const nextWidth = affectsWidth ? Math.max(minWidth, Math.min(width, widthLimit)) : width;
   const nextHeight = affectsHeight ? Math.max(minHeight, Math.min(height, heightLimit)) : height;
   if (nextWidth === width && nextHeight === height) return candidate;
-  return { ...candidate, width: roundValue(nextWidth), height: roundValue(nextHeight) };
+  return { ...candidate, width: nextWidth, height: nextHeight };
 };
 
 const reportOutOfBounds = (rect: ExtendsMovableBox) => {

@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `MovableGroup` 的 `sharedBounds=false` 现按文档语义对每个成员以自身矩形独立钳制（此前成员跟随引导方框整体位移、可能被推出自身边界）
 - `MovableGroup` 增加会话并发防护：第二个并发指针无法抢占进行中的组合会话，只单独拖动自己的方框
-- 旋转缩放在 AABB 超出区域尺寸时收缩到能放入区域：优先收缩被拖拽轴并复核 `minWidth` / `minHeight`，`ratioLock` 下两轴按同一因子等比收缩（此前仅平移钳制、无法阻止视觉溢出），指针与键盘路径均生效
+- 旋转缩放在 AABB 超出区域尺寸时收缩到能放入区域：边手柄仅收缩被拖拽轴（解析解上限并复核 `minWidth` / `minHeight`），角手柄与 `ratioLock` 沿拖拽射线按同一因子等比收缩、不产生轴坍缩；min 下限与"能放入"冲突时保住下限并经 `out-of-bounds` 上报溢出（此前仅平移钳制、无法阻止视觉溢出），指针与键盘路径均生效
 - `transformOrigin` 的几何解析支持一到两个关键字/百分比/px token（多余 token 忽略，无法解析的值回退 center），与探针计算保持一致
 - 吸附、碰撞与边界钳制的探针位移回写统一做像素取整，避免旋转映射产生亚像素 left/top
 - `memberId` 传入空字符串时回退为自动生成的成员标识，避免组内成员互相覆盖
