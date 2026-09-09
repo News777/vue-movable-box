@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { deltaToLocal, normalizeAngle, rotatedAABB } from './rotation';
+import {
+  deltaToLocal,
+  normalizeAngle,
+  resolveTransformOrigin,
+  rotatedAABB,
+  rotatedAABBAt
+} from './rotation';
 
 describe('rotation utilities', () => {
   it('normalizes angles into (-180, 180] and rejects non-finite values', () => {
@@ -47,5 +53,33 @@ describe('rotation utilities', () => {
     // Screen down at 90 degrees is local right.
     expect(deltaToLocal(0, 20, 90)).toEqual({ x: 20, y: 0 });
     expect(deltaToLocal(10, 10, -90)).toEqual({ x: -10, y: 10 });
+  });
+
+  it('resolves transform-origin keywords, percentages, and lengths', () => {
+    expect(resolveTransformOrigin('center', 120, 80)).toEqual({ x: 60, y: 40 });
+    expect(resolveTransformOrigin('', 120, 80)).toEqual({ x: 60, y: 40 });
+    expect(resolveTransformOrigin('nonsense', 120, 80)).toEqual({ x: 60, y: 40 });
+    expect(resolveTransformOrigin('top left', 120, 80)).toEqual({ x: 0, y: 0 });
+    expect(resolveTransformOrigin('left', 120, 80)).toEqual({ x: 0, y: 40 });
+    expect(resolveTransformOrigin('bottom', 120, 80)).toEqual({ x: 60, y: 80 });
+    expect(resolveTransformOrigin('50% 25%', 120, 80)).toEqual({ x: 60, y: 20 });
+    expect(resolveTransformOrigin('10px 20px', 120, 80)).toEqual({ x: 10, y: 20 });
+    expect(resolveTransformOrigin('100% 100%', 120, 80)).toEqual({ x: 120, y: 80 });
+  });
+
+  it('shifts the AABB for non-center transform origins and keeps translation equivariant', () => {
+    const rect = { left: 100, top: 100, width: 120, height: 80 };
+    const origin = resolveTransformOrigin('top left', rect.width, rect.height);
+    const visual = rotatedAABBAt(rect, 90, origin);
+    // Hand-computed corners rotated about (100, 100): x in [20, 100], y in [100, 220].
+    expect(visual).toEqual({ left: 20, top: 100, width: 80, height: 120 });
+
+    // Same geometry shifted by (10, 10): the AABB shifts 1:1.
+    const moved = rotatedAABBAt({ ...rect, left: 110, top: 110 }, 90, origin);
+    expect(moved).toEqual({ left: 30, top: 110, width: 80, height: 120 });
+
+    // Center origin matches the plain center AABB.
+    const center = resolveTransformOrigin('center', rect.width, rect.height);
+    expect(rotatedAABBAt(rect, 90, center)).toEqual(rotatedAABB(rect, 90));
   });
 });

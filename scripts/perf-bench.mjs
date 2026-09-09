@@ -87,7 +87,7 @@ const run = async () => {
       await page.mouse.up();
       await page.waitForTimeout(150);
 
-      const frames = await page.evaluate(() => window.__frames.splice(0));
+      const frames = (await page.evaluate(() => window.__frames.splice(0))).slice(1);
       const busy = frames.filter(frame => frame > 34);
       results.push({
         label,

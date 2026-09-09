@@ -17,11 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - 旋转方框（`rotate ≠ 0`）的几何语义（本次主要版本收敛的破坏性变更）：
-  - 边界约束与 `out-of-bounds` 按旋转矩形的轴对齐包围盒（AABB）判定
-  - 元素吸附（对齐与等间距）在 AABB 上求值，位移 1:1 映射回未旋转矩形
+  - 边界约束与 `out-of-bounds` 按旋转矩形的轴对齐包围盒（AABB）判定，AABB 计入 `transformOrigin` 偏移，非 center 原点按真实视觉位置钳制
+  - 元素吸附（对齐与等间距）在 AABB 上求值，位移 1:1 映射回未旋转矩形并做像素取整
   - 碰撞检测以 AABB 与未旋转 `snapTargets` 求交
   - 网格吸附继续对齐未旋转左上角；平移（拖拽/键盘/组合移动）不受旋转影响
+  - 旋转缩放语义：指针与键盘位移映射到本地坐标系后增量缩放（非逆运动学锚定），旋转下缩放结果额外做 AABB 边界钳制
   - 旋转几何假定 `px` 单位，`%` 单位下按百分比空间近似
+
+### Fixed
+- `MovableGroup` 的 `sharedBounds=false` 现按文档语义对每个成员以自身矩形独立钳制（此前成员跟随引导方框整体位移、可能被推出自身边界）
+- `MovableGroup` 增加会话并发防护：第二个并发指针无法抢占进行中的组合会话，只单独拖动自己的方框
+- `memberId` 传入空字符串时回退为自动生成的成员标识，避免组内成员互相覆盖
+- `scripts/perf-bench.mjs` 丢弃帧测量首帧（rAF 调度间隔），基准数据更准确
 
 ## [2.2.0] - 2026-09-09
 

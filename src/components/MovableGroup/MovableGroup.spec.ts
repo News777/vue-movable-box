@@ -211,6 +211,44 @@ describe('MovableGroup', () => {
     expect(harness.models.b).toMatchObject({ left: 500, top: 0 });
   });
 
+  it('clamps members individually when sharedBounds is off', async () => {
+    const harness = mountGroup({ sharedBounds: false });
+    // Member a starts at left 0; dragging the leader left by 80 would push a to -80.
+    await dragBox(harness, 1, [200, 25], [120, 25]);
+    expect(harness.models.a).toMatchObject({ left: 0, top: 0 });
+    // The leader keeps its own (interaction-clamped) movement.
+    expect(harness.models.b).toMatchObject({ left: 70, top: 0 });
+  });
+
+  it('ignores a second concurrent leader instead of hijacking the active session', async () => {
+    const harness = mountGroup();
+    // Start dragging b (opens the group session)...
+    await harness.boxes()[1].trigger('pointerdown', {
+      clientX: 200,
+      clientY: 25,
+      pointerId: 2
+    });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 240, 45, { pointerId: 2 }));
+    await flushFrame();
+    // ...then a second pointer tries to drag c mid-session.
+    await harness.boxes()[2].trigger('pointerdown', {
+      clientX: 350,
+      clientY: 25,
+      pointerId: 7
+    });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 420, 25, { pointerId: 7 }));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 420, 25, { pointerId: 7 }));
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 240, 45, { pointerId: 2 }));
+    await nextTick();
+
+    // c moved solo (its group beginDrag was ignored) and the b-formation stayed intact.
+    expect(harness.models.c).toMatchObject({ left: 370, top: 0 });
+    expect(harness.models.a).toMatchObject({ left: 40, top: 20 });
+    expect(harness.models.b).toMatchObject({ left: 190, top: 20 });
+    expect(harness.selectedRef.value).toEqual(['a', 'b']);
+  });
+
   it('restores every member when the leader interaction is cancelled', async () => {
     const harness = mountGroup();
     await harness.boxes()[1].trigger('pointerdown', {

@@ -14,6 +14,7 @@ import type {
   GroupMoveStopPayload,
   MovableGroupExpose
 } from '../../types/MovableGroup';
+import { asNumber, clamp } from '../MovableBox/core/box-geometry';
 import { deepClone } from '../MovableBox/utils';
 import {
   GROUP_CONTEXT_KEY,
@@ -61,11 +62,6 @@ watch(
 );
 
 const cloneRect = (rect: ExtendsMovableBox) => deepClone(rect);
-
-const asNumber = (value: number | string | undefined) => {
-  const converted = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(converted) ? converted : 0;
-};
 
 const translate = (rect: ExtendsMovableBox, deltaLeft: number, deltaTop: number) => ({
   ...rect,
@@ -138,6 +134,9 @@ const context: GroupContext = {
     }
   },
   beginDrag: (id, source) => {
+    // One formation at a time: a second concurrent pointer is ignored for group movement
+    // (it still drags its own box solo through the normal box interaction).
+    if (session.value && session.value.leaderId !== id) return;
     if (!members.has(id)) return;
     if (!selectedIds.value.includes(id)) setSelection([id]);
     const startRects = new Map<string, ExtendsMovableBox>();
@@ -154,22 +153,34 @@ const context: GroupContext = {
     const current = session.value;
     const leaderStart = current?.startRects.get(id);
     if (!current || !leaderStart || !members.has(id)) return candidate;
-    let deltaLeft = asNumber(candidate.left) - asNumber(leaderStart.left);
-    let deltaTop = asNumber(candidate.top) - asNumber(leaderStart.top);
+    const deltaLeft = asNumber(candidate.left) - asNumber(leaderStart.left);
+    const deltaTop = asNumber(candidate.top) - asNumber(leaderStart.top);
+    const edges = members.get(id)?.getAreaEdges();
+
     if (props.sharedBounds) {
-      const edges = members.get(id)?.getAreaEdges();
-      if (edges) {
-        const clamped = clampDeltaToEdges(current.startRects, { left: deltaLeft, top: deltaTop }, edges);
-        deltaLeft = clamped.left;
-        deltaTop = clamped.top;
+      let delta = { left: deltaLeft, top: deltaTop };
+      if (edges) delta = clampDeltaToEdges(current.startRects, delta, edges);
+      for (const [memberId, startRect] of current.startRects) {
+        if (memberId === id) continue;
+        members.get(memberId)?.translateTo(translate(startRect, delta.left, delta.top));
+      }
+      return translate(leaderStart, delta.left, delta.top);
+    }
+
+    // Without shared bounds every member clamps against its own start rectangle, so
+    // members stop individually at the area edge while the leader keeps moving.
+    if (edges) {
+      for (const [memberId, startRect] of current.startRects) {
+        if (memberId === id) continue;
+        const target = translate(startRect, deltaLeft, deltaTop);
+        const maxLeft = Math.max(edges.minLeft, edges.maxRight - asNumber(startRect.width));
+        const maxTop = Math.max(edges.minTop, edges.maxBottom - asNumber(startRect.height));
+        target.left = clamp(asNumber(target.left), edges.minLeft, maxLeft);
+        target.top = clamp(asNumber(target.top), edges.minTop, maxTop);
+        members.get(memberId)?.translateTo(target);
       }
     }
-    const delta = { left: deltaLeft, top: deltaTop };
-    for (const [memberId, startRect] of current.startRects) {
-      if (memberId === id) continue;
-      members.get(memberId)?.translateTo(translate(startRect, delta.left, delta.top));
-    }
-    return translate(leaderStart, delta.left, delta.top);
+    return candidate;
   },
   notifyMoved: (id, leaderRect) => {
     const current = session.value;

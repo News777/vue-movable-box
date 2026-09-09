@@ -397,19 +397,25 @@ nearest candidate inside `snapThreshold` wins inside a strategy, and equal dista
 ```
 
 `rotate` accepts degrees (clockwise, CSS `rotate()` semantics) and `transformOrigin` accepts any
-CSS transform-origin (`'center'`, `'top left'`, `'50% 50%'`). Resizing stays correct under
-rotation: pointer deltas are mapped into the box's local space, so handles keep following their
-rotated edges, and arrow keys resize along the rotated axes.
+CSS transform-origin (`'center'`, `'top left'`, `'50% 50%'`). Resizing under rotation maps
+pointer and keyboard deltas into the box's local space (rotation by the inverse angle), so a
+handle grows or shrinks along its rotated edge. The handle itself follows an incremental
+local-space model rather than an exact inverse-kinematic anchor: with large rotations the handle
+can drift slightly from the cursor while min/max, ratio lock, bounds, and collision constraints
+stay exact.
 
 Rotated geometry semantics (defined in 3.0.0):
 
 - **Bounds clamping** keeps the axis-aligned bounding box (AABB) of the rotated rectangle inside
-  the bounds area; `out-of-bounds` fires against the AABB as well.
+  the bounds area; `out-of-bounds` fires against the AABB as well. The AABB honors
+  `transformOrigin`, so non-center origins clamp at their true visual position.
 - **Element snapping** (alignment and equal spacing) evaluates the AABB; the resulting shift is
   applied 1:1 to the unrotated rectangle.
 - **Collision** checks the AABB against the unrotated `snapTargets` rectangles.
 - **Grid snapping** continues to align the unrotated top-left corner.
 - Translation (pointer drag, keyboard move, group movement) is unaffected by rotation.
+- Snap guides render inside the box element and rotate with it, so with `rotate != 0` the dashed
+  guide lines may not sit exactly on the target edges.
 - Rotation geometry assumes `px` units; with `%` units the AABB math operates in percentage space
   as an approximation.
 
@@ -578,7 +584,10 @@ Group semantics:
   `move-start` / `move` / `move-stop` with batch payloads (`{ leaderId, source, rects }`), and
   `move-cancel` restores the whole formation when the leader cancels.
 - Forced aborts (e.g. `disabled` toggled mid-drag) end the session without restore, matching
-  single-box semantics.
+  single-box semantics; the same applies when the leader unmounts mid-drag — other members keep
+  their current position.
+- A second concurrent pointer cannot hijack an active session: it drags its own box solo and the
+  running formation is untouched.
 - Exposed methods: `getSelected()`, `select(ids?)`, `getMemberRects()`.
 
 ## TypeScript

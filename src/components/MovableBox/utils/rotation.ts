@@ -40,6 +40,80 @@ export const rotatedAABB = (rect: PlaneRect, angle: number): PlaneRect => {
   };
 };
 
+export interface TransformOrigin {
+  x: number;
+  y: number;
+}
+
+/**
+ * Resolves a CSS transform-origin ('center', 'top left', '50% 50%', '10px 20px') into
+ * element-local coordinates for the given size. Keywords bind to their own axis in any
+ * order ('top left' === 'left top'); unparsable parts fall back to center.
+ */
+export const resolveTransformOrigin = (
+  spec: string,
+  width: number,
+  height: number
+): TransformOrigin => {
+  const fallback: TransformOrigin = { x: width / 2, y: height / 2 };
+  if (!spec) return fallback;
+  const parts = spec.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (parts.length === 0 || parts.length > 2) return fallback;
+
+  let x: number | null = null;
+  let y: number | null = null;
+  const assign = (value: number) => {
+    if (x === null) x = value;
+    else if (y === null) y = value;
+  };
+
+  for (const part of parts) {
+    if (part === 'left') x = 0;
+    else if (part === 'right') x = width;
+    else if (part === 'top') y = 0;
+    else if (part === 'bottom') y = height;
+    else if (part === 'center') assign(width / 2);
+    else if (part.endsWith('%')) {
+      const percent = Number(part.slice(0, -1));
+      if (!Number.isFinite(percent)) return fallback;
+      assign((percent / 100) * (x === null ? width : height));
+    } else {
+      const length = Number.parseFloat(part);
+      if (!Number.isFinite(length)) return fallback;
+      assign(length);
+    }
+  }
+  return { x: x ?? width / 2, y: y ?? height / 2 };
+};
+
+/**
+ * AABB of the rectangle rotated about an arbitrary transform origin. Rotating about a
+ * non-center origin shifts the center-rotation AABB by a constant d = R(C - O) + (O - C)
+ * that depends only on the element geometry, so translation stays 1:1 equivariant.
+ */
+export const rotatedAABBAt = (
+  rect: PlaneRect,
+  angle: number,
+  origin: TransformOrigin
+): PlaneRect => {
+  const centerAABB = rotatedAABB(rect, angle);
+  const normalized = normalizeAngle(angle);
+  if (normalized === 0) return centerAABB;
+  const rad = angleToRadians(normalized);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const ux = rect.width / 2 - origin.x;
+  const uy = rect.height / 2 - origin.y;
+  const dX = clean(ux * cos - uy * sin - ux);
+  const dY = clean(ux * sin + uy * cos - uy);
+  return {
+    left: clean(centerAABB.left + dX),
+    top: clean(centerAABB.top + dY),
+    width: centerAABB.width,
+    height: centerAABB.height
+  };
+};
+
 /**
  * Maps a screen-space movement delta into the box's local (unrotated) space so resize
  * handles keep working along their rotated edges. Screen delta rotates by -angle.

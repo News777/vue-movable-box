@@ -71,7 +71,7 @@ import {
 } from 'vue';
 import { useCollision, useGrid, useKeyboard, useSnap } from './composables';
 import { asNumber, clamp, sameRect } from './core/box-geometry';
-import { deltaToLocal, normalizeAngle, rotatedAABB } from './utils/rotation';
+import { deltaToLocal, normalizeAngle, resolveTransformOrigin, rotatedAABBAt } from './utils/rotation';
 import { GROUP_CONTEXT_KEY, type GroupMemberApi } from '../MovableGroup/context';
 import type {
   BoundsMargin,
@@ -378,13 +378,13 @@ const getAreaEdges = () => {
   };
 };
 
-const getPositionBounds = (rect: ExtendsMovableBox) => {
+const getPositionBounds = (rect: { width: number; height: number }) => {
   const edges = getAreaEdges();
   return {
     minLeft: edges.minLeft,
-    maxLeft: Math.max(edges.minLeft, edges.maxRight - asNumber(rect.width)),
+    maxLeft: Math.max(edges.minLeft, edges.maxRight - rect.width),
     minTop: edges.minTop,
-    maxTop: Math.max(edges.minTop, edges.maxBottom - asNumber(rect.height))
+    maxTop: Math.max(edges.minTop, edges.maxBottom - rect.height)
   };
 };
 
@@ -400,7 +400,9 @@ const numericPlane = (rect: ExtendsMovableBox) => ({
 const geometryProbe = (rect: ExtendsMovableBox) => {
   const plane = numericPlane(rect);
   const angle = rotationAngle.value;
-  return angle ? rotatedAABB(plane, angle) : plane;
+  if (!angle) return plane;
+  const origin = resolveTransformOrigin(props.transformOrigin, plane.width, plane.height);
+  return rotatedAABBAt(plane, angle, origin);
 };
 
 const reportOutOfBounds = (rect: ExtendsMovableBox) => {
@@ -420,20 +422,27 @@ const reportOutOfBounds = (rect: ExtendsMovableBox) => {
 const clampPosition = (rect: ExtendsMovableBox) => {
   if (!props.limitAreaForParent || !state.parentElement) return rect;
   const probe = geometryProbe(rect);
-  const bounds = getPositionBounds(probe as ExtendsMovableBox);
+  const bounds = getPositionBounds(probe);
   const clampedLeft = clamp(probe.left, bounds.minLeft, bounds.maxLeft);
   const clampedTop = clamp(probe.top, bounds.minTop, bounds.maxTop);
+  if (!rotationAngle.value) {
+    return {
+      ...rect,
+      left: clampedLeft,
+      top: clampedTop
+    };
+  }
   return {
     ...rect,
-    left: asNumber(rect.left) + (clampedLeft - probe.left),
-    top: asNumber(rect.top) + (clampedTop - probe.top)
+    left: roundValue(asNumber(rect.left) + (clampedLeft - probe.left)),
+    top: roundValue(asNumber(rect.top) + (clampedTop - probe.top))
   };
 };
 
 // --- MovableGroup integration (inert when no MovableGroup surrounds the box) ---
 const groupContext = inject(GROUP_CONTEXT_KEY, null);
 const memberIdentity =
-  props.memberId ?? `member-${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
+  props.memberId || `member-${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
 let groupDragLeader = false;
 const memberApi: GroupMemberApi = {
   getRect: () => cloneRect(internalRect.value),
@@ -479,32 +488,31 @@ let lastCollisionKey = 'clear';
 const horizontalSnapPoints = new Set(['left', 'right', 'center-x']);
 const verticalSnapPoints = new Set(['top', 'bottom', 'center-y']);
 
-  const publishSnap = (result: SnapResult) => {
-    const targetIds = {
-      horizontal: result.points.some(point => horizontalSnapPoints.has(point))
-        ? result.targetIds.horizontal
-        : undefined,
-      vertical: result.points.some(point => verticalSnapPoints.has(point))
-        ? result.targetIds.vertical
-        : undefined
-    };
-    const spacing = result.snapped ? deepClone(result.spacing ?? []) : [];
-    const payload: SnapEventPayload = result.snapped
-      ? {
-          snapped: true,
-          point: result.snapPoint,
-          points: result.points,
-          targetId: result.targetId,
-          targetIds,
-          spacing: spacing.length > 0 ? spacing : undefined
-        }
-      : { snapped: false };
-    const snapKey = JSON.stringify({
-      payload,
-      targetIds,
-      left: result.points.some(point => horizontalSnapPoints.has(point)) ? result.left : undefined,
-      top: result.points.some(point => verticalSnapPoints.has(point)) ? result.top : undefined
-    });
+const publishSnap = (result: SnapResult) => {
+  const targetIds = {
+    horizontal: result.points.some(point => horizontalSnapPoints.has(point))
+      ? result.targetIds.horizontal
+      : undefined,
+    vertical: result.points.some(point => verticalSnapPoints.has(point))
+      ? result.targetIds.vertical
+      : undefined
+  };
+  const spacing = result.snapped ? deepClone(result.spacing ?? []) : [];
+  const payload: SnapEventPayload = result.snapped
+    ? {
+        snapped: true,
+        point: result.snapPoint,
+        points: result.points,
+        targetId: result.targetId,
+        targetIds,
+        spacing: spacing.length > 0 ? spacing : undefined
+      }
+    : { snapped: false };
+  const snapKey = JSON.stringify({
+    payload,
+    left: result.points.some(point => horizontalSnapPoints.has(point)) ? result.left : undefined,
+    top: result.points.some(point => verticalSnapPoints.has(point)) ? result.top : undefined
+  });
   if (snapKey !== lastSnapKey) {
     if (result.snapped || lastSnapKey !== 'clear') emit('snap', payload);
     lastSnapKey = result.snapped ? snapKey : 'clear';
@@ -567,8 +575,8 @@ const resolveCollision = (
   if (rotationAngle.value) {
     return {
       ...candidate,
-      left: asNumber(candidate.left) + (result.rect.left - candidateProbe.left),
-      top: asNumber(candidate.top) + (result.rect.top - candidateProbe.top)
+      left: roundValue(asNumber(candidate.left) + (result.rect.left - candidateProbe.left)),
+      top: roundValue(asNumber(candidate.top) + (result.rect.top - candidateProbe.top))
     };
   }
   return { ...candidate, ...result.rect } as ExtendsMovableBox;
@@ -596,13 +604,15 @@ const applyInteractivePosition = (
   if (useElementSnap) {
     const probe = geometryProbe(next);
     snapResult = snap.resolveSnap(probe, props.snapTargets, axes);
-    next = rotationAngle.value
-      ? {
-          ...next,
-          left: asNumber(next.left) + (snapResult.left - probe.left),
-          top: asNumber(next.top) + (snapResult.top - probe.top)
-        }
-      : { ...next, left: snapResult.left, top: snapResult.top };
+    if (rotationAngle.value) {
+      next = {
+        ...next,
+        left: roundValue(asNumber(next.left) + (snapResult.left - probe.left)),
+        top: roundValue(asNumber(next.top) + (snapResult.top - probe.top))
+      };
+    } else {
+      next = { ...next, left: snapResult.left, top: snapResult.top };
+    }
   } else {
     snap.clearGuides();
   }
@@ -840,7 +850,15 @@ const processInteraction = (source: PointerEvent) => {
     });
     snap.clearGuides();
     const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
-    const candidate = resizeFromHandle(state.beforeInteraction, state.handle, localDelta.x, localDelta.y);
+    let candidate = resizeFromHandle(
+      state.beforeInteraction,
+      state.handle,
+      localDelta.x,
+      localDelta.y
+    );
+    // resizeFromHandle constrains sizes against local edges; rotated boxes additionally
+    // get their AABB clamped into the area.
+    if (rotationAngle.value) candidate = clampPosition(candidate);
     reportOutOfBounds(candidate);
     const collisionResolved = resolveCollision(candidate, previous);
     if (collisionResolved) {
@@ -1102,7 +1120,8 @@ const resizeWithKeyboard = (
   const deltaX = direction === 'left' ? -distance : direction === 'right' ? distance : 0;
   const deltaY = direction === 'top' ? -distance : direction === 'bottom' ? distance : 0;
   const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
-  const candidate = resizeFromHandle(previous, handle, localDelta.x, localDelta.y);
+  let candidate = resizeFromHandle(previous, handle, localDelta.x, localDelta.y);
+  if (rotationAngle.value) candidate = clampPosition(candidate);
   reportOutOfBounds(candidate);
   const collisionResolved = resolveCollision(candidate, previous);
   if (!collisionResolved || sameRect(collisionResolved, previous)) return;

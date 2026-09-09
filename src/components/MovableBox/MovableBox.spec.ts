@@ -353,6 +353,44 @@ describe('MovableBox', () => {
     expect(update).toMatchObject({ width: 120, height: 60 });
   });
 
+  it('clamps the rotated AABB when resizing pushes it out of the area', async () => {
+    // 200x100 box rotated 90 degrees: growing local width to 400 grows the visual AABB
+    // to 400 tall, which must stop at the area's top edge instead of overflowing.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 200, height: 100 }),
+      rotate: 90,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-mr');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    // Screen +200px down maps to local +200px on x for a 90-degree rotation.
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 0, 200));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 200));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    // Width grew to 400; the AABB (100 wide, 400 tall at left 50) clamps to top 0,
+    // shifting the local rect from 0 to 150.
+    expect(update).toMatchObject({ width: 400, top: 150, height: 100 });
+  });
+
+  it('honors transformOrigin in the rotated geometry', async () => {
+    // 120x80 box at (100, 100) rotated 90deg around its top-left corner: the visual
+    // AABB is (20, 100, 80, 120). With the area 500x400, dragging right must stop the
+    // visual AABB right edge (left + 80) at 500, i.e. visual left 420, local left 500.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 100, top: 100, width: 120, height: 80 }),
+      rotate: 90,
+      transformOrigin: 'top left',
+      limitAreaForParent: true
+    });
+    await pointerDrag(wrapper, [0, 0], [600, 0]);
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ left: 500 });
+  });
+
   it('snaps the rotated bounding box and shifts the local rect accordingly', async () => {
     const wrapper = mountBox({
       modelValue: makeModel({ left: 20, top: 500, width: 100, height: 50 }),
