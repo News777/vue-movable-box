@@ -33,8 +33,15 @@ const mountBox = (overrides: Record<string, unknown> = {}, slots: Record<string,
   return wrapper;
 };
 
+type TestPointerEventType =
+  | 'pointerdown'
+  | 'pointermove'
+  | 'pointerup'
+  | 'pointercancel'
+  | 'lostpointercapture';
+
 const pointerEvent = (
-  type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
+  type: TestPointerEventType,
   x: number,
   y: number,
   init: PointerEventInit = {}
@@ -644,6 +651,49 @@ describe('MovableBox', () => {
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('width: 130px');
   });
 
+  it('activates an inactive box when keyboard focus enters the box', async () => {
+    const wrapper = mountBox({ active: false, keyboardEnabled: true });
+    const box = wrapper.get('.auto-draggable');
+
+    await box.trigger('focus');
+    await box.trigger('keydown', { key: 'ArrowRight' });
+
+    expect(wrapper.emitted('active')).toBeTruthy();
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ left: 11 });
+    expect(wrapper.get('.handle-br').isVisible()).toBe(true);
+  });
+
+  it('does not handle arrow keys from interactive slot content', async () => {
+    const wrapper = mountBox(
+      { active: true, keyboardEnabled: true },
+      { default: '<button class="slot-button"><span>action</span></button>' }
+    );
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true
+    });
+
+    wrapper.get('.slot-button span').element.dispatchEvent(event);
+    await nextTick();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(wrapper.emitted('update:modelValue')).toBeFalsy();
+  });
+
+  it('rejects non-primary pointers and non-primary mouse buttons', async () => {
+    const wrapper = mountBox();
+    const box = wrapper.get('.auto-draggable').element;
+
+    box.dispatchEvent(pointerEvent('pointerdown', 10, 20, { button: 2 }));
+    box.dispatchEvent(
+      pointerEvent('pointerdown', 10, 20, { pointerId: 2, pointerType: 'touch', isPrimary: false })
+    );
+
+    expect(wrapper.emitted('drag-start')).toBeFalsy();
+    expect(wrapper.emitted('active')).toBeFalsy();
+  });
+
   it('ignores a second pointer down while an interaction is in progress', async () => {
     const wrapper = mountBox();
     await wrapper
@@ -669,9 +719,22 @@ describe('MovableBox', () => {
     expect(middleRight.attributes('role')).toBe('separator');
     expect(middleRight.attributes('aria-orientation')).toBe('vertical');
     expect(middleRight.attributes('aria-label')).toBe('Resize middle right');
+    expect(middleRight.attributes('aria-valuenow')).toBe('120');
+    expect(middleRight.attributes('aria-valuemin')).toBe('0');
+    expect(middleRight.attributes('aria-valuetext')).toBe('120 pixels');
+    expect(middleRight.attributes('aria-keyshortcuts')).toBe('ArrowLeft ArrowRight');
     expect(middleRight.attributes('tabindex')).toBe('0');
     expect(wrapper.get('.handle-bm').attributes('aria-orientation')).toBe('horizontal');
-    expect(wrapper.get('.handle-tl').attributes('aria-orientation')).toBeUndefined();
+    expect(wrapper.get('.handle-bm').attributes('aria-valuenow')).toBe('80');
+
+    const topLeft = wrapper.get('.handle-tl');
+    expect(topLeft.attributes('role')).toBe('group');
+    expect(topLeft.attributes('aria-roledescription')).toBe('two-axis resize handle');
+    expect(topLeft.attributes('aria-orientation')).toBeUndefined();
+    expect(topLeft.attributes('aria-valuenow')).toBeUndefined();
+    expect(topLeft.attributes('aria-keyshortcuts')).toBe(
+      'ArrowUp ArrowDown ArrowLeft ArrowRight'
+    );
 
     const withoutKeyboard = mountBox({ active: true, handles: ['mr'] });
     expect(withoutKeyboard.get('.handle-mr').attributes('tabindex')).toBeUndefined();
@@ -702,6 +765,21 @@ describe('MovableBox', () => {
     expect(wrapper.emitted('update:modelValue')?.length ?? 0).toBe(updatesAfterCancel);
     expect(wrapper.get('.auto-draggable').classes()).not.toContain('is-dragging');
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 10px');
+  });
+
+  it('ignores lost pointer capture events from a different pointer', async () => {
+    const wrapper = mountBox();
+    const box = wrapper.get('.auto-draggable');
+    box.element.dispatchEvent(pointerEvent('pointerdown', 10, 20, { pointerId: 1 }));
+    box.element.dispatchEvent(pointerEvent('lostpointercapture', 10, 20, { pointerId: 2 }));
+    document.documentElement.dispatchEvent(
+      pointerEvent('pointermove', 40, 50, { pointerId: 1 })
+    );
+    await flushFrame();
+
+    expect(wrapper.emitted('drag-cancel')).toBeFalsy();
+    expect(box.attributes('style')).toContain('left: 40px');
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 40, 50, { pointerId: 1 }));
   });
 
   it('emits immutable updates from exposed methods and resets to the initial model', async () => {
@@ -783,9 +861,12 @@ describe('MovableBox', () => {
   });
 
   it('treats invalid drag selectors as blocking rather than crashing', async () => {
-    const wrapper = mountBox({ dragHandle: '<<<' });
-    await wrapper.get('.auto-draggable').trigger('pointerdown', { clientX: 0, clientY: 0 });
-    expect(wrapper.emitted('drag-start')).toBeFalsy();
+    for (const props of [{ dragHandle: '<<<' }, { dragCancel: '<<<' }]) {
+      const wrapper = mountBox(props);
+      await wrapper.get('.auto-draggable').trigger('pointerdown', { clientX: 0, clientY: 0 });
+      expect(wrapper.emitted('drag-start')).toBeFalsy();
+      wrapper.unmount();
+    }
   });
 
   it('rejects interactions via canDrag and canResize guards without touching the model', async () => {
@@ -799,6 +880,25 @@ describe('MovableBox', () => {
     expect(blocked.emitted('resize-start')).toBeFalsy();
     expect(blocked.emitted('update:modelValue')).toBeFalsy();
     expect(blocked.emitted('resize-cancel')).toBeFalsy();
+  });
+
+  it('applies canDrag and canResize guards to keyboard interactions', async () => {
+    const blocked = mountBox({
+      active: true,
+      keyboardEnabled: true,
+      canDrag: () => false,
+      canResize: () => false,
+      handles: ['br'],
+      resizeDirections: ['br']
+    });
+    const box = blocked.get('.auto-draggable');
+
+    await box.trigger('keydown', { key: 'ArrowRight' });
+    await box.trigger('keydown', { key: 'ArrowRight', shiftKey: true });
+
+    expect(blocked.emitted('update:modelValue')).toBeFalsy();
+    expect(blocked.emitted('move')).toBeFalsy();
+    expect(blocked.emitted('resize')).toBeFalsy();
   });
 
   it('only blocks the guarded interaction type and passes the current rectangle', async () => {

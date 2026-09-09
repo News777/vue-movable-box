@@ -14,6 +14,7 @@
     tabindex="0"
     @pointerdown="handlePointerDown($event, null)"
     @dblclick="emit('dblclick', $event)"
+    @focus="handleBoxFocus"
     @keydown="handleKeyDown"
   >
     <div
@@ -35,9 +36,15 @@
         class="handle"
         :class="`handle-${handle}`"
         :style="handleStyle"
-        role="separator"
+        :role="handleRole(handle)"
+        :aria-roledescription="handleRoleDescription(handle)"
         :aria-orientation="handleOrientation(handle)"
         :aria-label="handleLabel(handle)"
+        :aria-valuenow="handleValue(handle)"
+        :aria-valuemin="handleMinimum(handle)"
+        :aria-valuemax="handleMaximum(handle)"
+        :aria-valuetext="handleValueText(handle)"
+        :aria-keyshortcuts="handleKeyShortcuts(handle)"
         :tabindex="keyboardEnabled ? 0 : undefined"
         @pointerdown.stop.prevent="handlePointerDown($event, handle)"
         @focus="focusedHandle = handle"
@@ -779,6 +786,7 @@ const handlePointerCancel = (source: PointerEvent) => {
   cancelInteraction(source);
 };
 const handleLostPointerCapture = (source: PointerEvent) => {
+  if (!isOwnedPointer(source)) return;
   if (state.isDragging || state.isResizing) cancelInteraction(source);
 };
 
@@ -918,17 +926,27 @@ const isDragAllowedFrom = (target: EventTarget | null) => {
   const closestInBox = (selector: string) => {
     try {
       const matched = target.closest(selector);
-      return matched instanceof Element && root.contains(matched) ? matched : null;
+      return {
+        valid: true,
+        matched: matched instanceof Element && root.contains(matched)
+      };
     } catch {
-      return null;
+      return { valid: false, matched: false };
     }
   };
-  if (props.dragCancel && closestInBox(props.dragCancel)) return false;
-  if (props.dragHandle) return Boolean(closestInBox(props.dragHandle));
+  if (props.dragCancel) {
+    const result = closestInBox(props.dragCancel);
+    if (!result.valid || result.matched) return false;
+  }
+  if (props.dragHandle) {
+    const result = closestInBox(props.dragHandle);
+    return result.valid && result.matched;
+  }
   return true;
 };
 
 const handlePointerDown = (source: PointerEvent, handle: HandlePosition | null) => {
+  if (!source.isPrimary || source.button !== 0) return;
   if (!handle && !isDragAllowedFrom(source.target)) return;
   startInteraction(source, handle);
 };
@@ -956,6 +974,7 @@ function endInteraction(source: PointerEvent) {
 const moveWithKeyboard = (direction: DragDirection, distance: number) => {
   refreshArea();
   const previous = cloneRect(internalRect.value);
+  if (props.canDrag?.(cloneRect(previous)) === false) return;
   const candidate = cloneRect(previous);
   if (direction === 'left') candidate.left = asNumber(candidate.left) - distance;
   if (direction === 'right') candidate.left = asNumber(candidate.left) + distance;
@@ -979,6 +998,7 @@ const resizeWithKeyboard = (
   if (!isResizable.value || !isHandleAllowed(handle)) return;
   refreshArea();
   const previous = cloneRect(internalRect.value);
+  if (props.canResize?.(cloneRect(previous), handle) === false) return;
   const deltaX = direction === 'left' ? -distance : direction === 'right' ? distance : 0;
   const deltaY = direction === 'top' ? -distance : direction === 'bottom' ? distance : 0;
   const candidate = resizeFromHandle(previous, handle, deltaX, deltaY);
@@ -999,11 +1019,77 @@ const HANDLE_LABELS: Record<HandlePosition, string> = {
   bm: 'bottom middle',
   br: 'bottom right'
 };
+const CORNER_HANDLES = new Set<HandlePosition>(['tl', 'tr', 'bl', 'br']);
+const isCornerHandle = (handle: HandlePosition) => CORNER_HANDLES.has(handle);
+const handleRole = (handle: HandlePosition) => (isCornerHandle(handle) ? 'group' : 'separator');
+const handleRoleDescription = (handle: HandlePosition) =>
+  isCornerHandle(handle) ? 'two-axis resize handle' : undefined;
 const handleLabel = (handle: HandlePosition) => `Resize ${HANDLE_LABELS[handle]}`;
 const handleOrientation = (handle: HandlePosition) => {
-  if (handle === 'tm' || handle === 'bm') return 'horizontal';
+  if (isCornerHandle(handle)) return undefined;
   if (handle === 'ml' || handle === 'mr') return 'vertical';
-  return undefined;
+  return 'horizontal';
+};
+const handleUsesWidth = (handle: HandlePosition) => handle === 'ml' || handle === 'mr';
+const handleValue = (handle: HandlePosition) => {
+  if (isCornerHandle(handle)) return undefined;
+  return asNumber(
+    handleUsesWidth(handle) ? internalRect.value.width : internalRect.value.height
+  );
+};
+const handleMinimum = (handle: HandlePosition) => {
+  if (isCornerHandle(handle)) return undefined;
+  return asNumber(handleUsesWidth(handle) ? props.minWidth : props.minHeight);
+};
+const handleMaximum = (handle: HandlePosition) => {
+  if (isCornerHandle(handle)) return undefined;
+  const configured = handleUsesWidth(handle) ? props.maxWidth : props.maxHeight;
+  if (configured === undefined) return undefined;
+  const value = asNumber(configured);
+  return Number.isFinite(value) ? value : undefined;
+};
+const handleValueText = (handle: HandlePosition) => {
+  const value = handleValue(handle);
+  if (value === undefined) return undefined;
+  return props.unitType === '%' ? `${value} percent` : `${value} pixels`;
+};
+const handleKeyShortcuts = (handle: HandlePosition) => {
+  if (!props.keyboardEnabled) return undefined;
+  if (isCornerHandle(handle)) return 'ArrowUp ArrowDown ArrowLeft ArrowRight';
+  return handleUsesWidth(handle) ? 'ArrowLeft ArrowRight' : 'ArrowUp ArrowDown';
+};
+
+const handleBoxFocus = (event: FocusEvent) => {
+  if (event.target !== movableRef.value) return;
+  if (props.keyboardEnabled && !props.disabled && !props.initRect) setActive(true);
+};
+
+const INTERACTIVE_CONTENT_SELECTOR = [
+  'a[href]',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="button"]',
+  '[role="link"]',
+  '[role="textbox"]',
+  '[role="checkbox"]',
+  '[role="radio"]',
+  '[role="slider"]',
+  '[role="spinbutton"]',
+  '[role="switch"]',
+  '[role="combobox"]',
+  '[tabindex]:not([tabindex="-1"])'
+].join(',');
+
+const isKeyboardEventFromInteractiveContent = (event: KeyboardEvent) => {
+  const target = event.target;
+  const root = movableRef.value;
+  if (!(target instanceof Element) || !root || target === root) return false;
+  if (target.closest('.handle')) return false;
+  const interactive = target.closest(INTERACTIVE_CONTENT_SELECTOR);
+  return interactive !== null && interactive !== root && root.contains(interactive);
 };
 
 const keyboard = useKeyboard(
@@ -1025,7 +1111,10 @@ const keyboard = useKeyboard(
     cancel: source => cancelInteraction(source)
   }
 );
-const handleKeyDown = keyboard.handleKeyDown;
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (isKeyboardEventFromInteractiveContent(event)) return;
+  keyboard.handleKeyDown(event);
+};
 
 const toPixelX = (value: number) => (isPercent.value ? (value / 100) * state.parentWidth : value);
 const toPixelY = (value: number) => (isPercent.value ? (value / 100) * state.parentHeight : value);
@@ -1165,10 +1254,5 @@ onUnmounted(() => {
   -webkit-user-select: none;
 }
 
-[dir='rtl'] .handle-tl,
-[dir='rtl'] .handle-ml,
-[dir='rtl'] .handle-bl { left: auto; right: -5px; }
-[dir='rtl'] .handle-tr,
-[dir='rtl'] .handle-mr,
-[dir='rtl'] .handle-br { left: -5px; right: auto; }
+/* Handle names and resize geometry use physical edges, so they stay fixed in RTL layouts. */
 </style>

@@ -31,7 +31,7 @@ class PointerEventPolyfill extends MouseEvent implements PointerEvent {
     super(type, init);
     this.pointerId = init.pointerId ?? 1;
     this.pointerType = init.pointerType ?? '';
-    this.isPrimary = init.isPrimary ?? false;
+    this.isPrimary = init.isPrimary ?? true;
   }
 }
 
