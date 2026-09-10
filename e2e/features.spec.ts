@@ -45,19 +45,25 @@ test.describe('v3.2+ collision fixtures', () => {
 });
 
 test.describe('v3.3 rotation snap and fixed-anchor fixtures', () => {
-  test('keyboard rotation snaps to the configured snap angles', async ({
-    page,
-    browserName
-  }) => {
-    test.skip(browserName !== 'chromium', 'Rotation handle focus routing is verified on Chromium');
+  test('keyboard rotation snaps to the configured snap angles', async ({ page }) => {
     await page.goto(fixture('rotation-snap'));
     await page.locator('.auto-draggable').first().click();
     await page.locator('.rotation-handle').focus();
+    const transform = () => page.locator('.auto-draggable').first().getAttribute('style');
+
+    // Step 25 with candidates [0, 45] and threshold 10: the first press lands between
+    // candidates and commits unsnapped, proving the keyboard path is wired.
     await page.keyboard.press('ArrowRight');
-    const transform = await page.locator('.auto-draggable').first().getAttribute('style');
-    // The 5-degree step is within the 10-degree threshold of 0 and snaps back, so the
-    // committed rotation stays at zero (no rotate() in the transform).
-    expect(transform).not.toContain('rotate(');
+    await expect
+      .poll(async () => (await transform())?.includes('rotate(25deg)'), { timeout: 5_000 })
+      .toBe(true);
+
+    // The second press reaches 50, which is within 5 degrees of the 45-degree candidate
+    // and must snap back to 45 instead of committing 50.
+    await page.keyboard.press('ArrowRight');
+    await expect
+      .poll(async () => (await transform())?.includes('rotate(45deg)'), { timeout: 5_000 })
+      .toBe(true);
   });
 
   test('fixed-anchor resize keeps the opposite corner pinned', async ({ page }) => {

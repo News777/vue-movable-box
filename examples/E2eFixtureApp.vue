@@ -20,7 +20,7 @@
           active
           rotatable
           keyboard-enabled
-          :keyboard-step="5"
+          :keyboard-step="25"
           :rotation-snap-angles="[0, 45, 90]"
           :rotation-snap-threshold="10"
           class="probe-box"
