@@ -45,6 +45,19 @@ jobs:
       - name: Package consumption check
         run: pnpm test:package
 
+      - name: Performance baseline (quick)
+        if: matrix.node-version == '20.x'
+        run: pnpm bench
+        env:
+          BENCH_SCENARIOS: 100,1000
+
+      - name: Upload performance baseline
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench-results.json
+
       - name: Upload build artifacts
         if: matrix.node-version == '20.x'
         uses: actions/upload-artifact@v4
@@ -73,8 +86,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Chromium
-        run: pnpm exec playwright install chromium --with-deps
+      - name: Install browsers
+        run: pnpm exec playwright install chromium firefox webkit --with-deps
 
       - name: Browser tests
         run: pnpm test:e2e
@@ -89,11 +102,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: lib
           path: lib
+
+      - name: Version validation
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Tag version $TAG_VERSION does not match package version $PACKAGE_VERSION."
+            exit 1
+          fi
+
+      - name: Package consumption check
+        run: pnpm test:package
 
       - name: Publish to npm
         env:

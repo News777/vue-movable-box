@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 更新项目计划书，明确 v3.2.0 集中修复旋转碰撞及其它已确认问题，并规划 v3.3.0–v3.5.0 的新增能力、任务状态、依赖关系和验收标准；计划功能尚未实现
 
+## [3.5.0] - 2026-09-10
+
+### Added
+
+- FEAT-35-01 新增碰撞诊断示例（`examples/diagnose.html`）：可切换真实旋转轮廓、AABB 包围盒、接触法线与安全位置叠加层，并支持一键导出当前场景 JSON 用于回归复现
+- FEAT-35-02 新增完整接入示例（`examples/integration.html`）：覆盖普通受控布局、旋转碰撞、组合整体移动（groupCollision='all'）与受控数据回写，并标注坐标系与目标数据要求
+- FEAT-35-03 e2e 浏览器矩阵扩展到 Chromium、Firefox 与 WebKit；依赖 CDP 输入模拟的用例保留在 Chromium 并显式标记跳过原因；新增 e2e fixture（`examples/e2e-fixture.html`）覆盖精确碰撞、角度吸附、固定锚点缩放与组合整体碰撞的浏览器级回归
+- FEAT-35-04 兼容性收敛：`test:package` 新增"已安装 vue 满足声明 peer 范围"检查；双语 README 新增从 v3.1.x 的迁移说明（precise 碰撞默认值、包入口、浏览器全局安装、版本导出）
+- FEAT-35-05 发布自动化：CI e2e 安装并运行三浏览器矩阵；build 作业接入快速性能基线（`BENCH_SCENARIOS=100,1000`）并上传 `bench-results.json` 工件；release 作业在发布前执行版本校验与 tarball 消费检查
+
 ## [3.4.0] - 2026-09-10
 
 ### Added

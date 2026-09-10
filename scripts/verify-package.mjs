@@ -157,7 +157,20 @@ try {
     pass('UMD global exposes VueMovableBox with install for Vue.createApp(...).use(...)');
   }
 
-  // --- 6. CSS and TypeScript declarations ------------------------------------------
+  // --- 6. Declared Vue compatibility range ------------------------------------------
+  // The installed vue must satisfy the package's peerDependencies range so the checks
+  // above run against a supported host.
+  const peerRange = consumedPackageJson.peerDependencies?.vue ?? '';
+  const installedVue = JSON.parse(
+    readFileSync(path.join(rootDir, 'node_modules/vue/package.json'), 'utf8')
+  );
+  if (!satisfiesCaretRange(installedVue.version, peerRange)) {
+    fail(`installed vue ${installedVue.version} does not satisfy declared range "${peerRange}"`);
+  } else {
+    pass(`installed vue ${installedVue.version} satisfies declared peer range "${peerRange}"`);
+  }
+
+  // --- 7. CSS and TypeScript declarations ------------------------------------------
   const css = readFileSync(path.join(packageDir, 'lib/css/VueMovableBox.css'), 'utf8');
   if (!css.includes('.auto-draggable')) {
     fail('CSS subpath does not contain the component styles');
@@ -183,6 +196,26 @@ if (process.exitCode) {
   process.exit(process.exitCode);
 }
 console.log(`\nAll ${checks.length} package consumption checks passed.`);
+
+/**
+ * Evaluates a simple caret range ("^3.3.0", "^3.3", "^3") against a concrete version.
+ * Prerelease suffixes on the version ("3.5.0-rc.1") are ignored for comparison.
+ */
+function satisfiesCaretRange(version, range) {
+  const rangeMatch = /^\^(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(range.trim());
+  if (!rangeMatch) return false;
+  const versionMatch = /^(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+  if (!versionMatch) return false;
+  const [, major, minor, patch] = versionMatch.map(Number);
+  const minMajor = Number(rangeMatch[1]);
+  const minMinor = Number(rangeMatch[2] ?? 0);
+  const minPatch = Number(rangeMatch[3] ?? 0);
+  if (major !== minMajor) return false;
+  if (major === 0) {
+    return minor === minMinor && patch >= minPatch;
+  }
+  return minor > minMinor || (minor === minMinor && patch >= minPatch);
+}
 
 function writeEsmProbe(file) {
   const source = `

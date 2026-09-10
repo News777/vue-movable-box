@@ -1,7 +1,7 @@
 # VueMovableBox Roadmap / 项目规划
 
-本计划覆盖 v3.2.0–v3.5.0，当前仓库版本为 v3.1.0。所有已确认缺陷集中在下一个版本
-v3.2.0 修复；v3.3.0–v3.5.0 安排新增能力、性能增强与稳定性建设。
+本计划覆盖 v3.2.0–v3.5.0。截至 2026-09-10，v3.2.0–v3.5.0 全部版本已开发完成并通过验证，
+当前仓库版本为 v3.5.0。
 
 This roadmap tracks planned work through v3.5.0. All confirmed fixes are assigned to v3.2.0;
 later milestones cover new capabilities, performance, and release readiness. Planned APIs below
@@ -207,20 +207,34 @@ are not yet available. Completed changes belong in [CHANGELOG.md](CHANGELOG.md).
 
 ## 5. v3.5.0 — 稳定性与接入完善
 
-**版本状态：待开发。依赖：前述能力完成并进入综合验收。**
+**版本状态：已开发完成并通过验证（v3.5.0）。**
 
 | 编号 | 新增能力 | 交付内容 | 状态 |
 | --- | --- | --- | --- |
-| FEAT-35-01 | 诊断示例 | 可切换真实轮廓、AABB、接触法线和安全位置，支持导出场景 JSON | 待开发 |
-| FEAT-35-02 | 完整接入示例 | 普通布局、旋转碰撞、组合移动和受控数据回写，明确坐标系与目标数据要求 | 待开发 |
-| FEAT-35-03 | 浏览器验证扩展 | 通用交互覆盖 Chromium、Firefox、WebKit；依赖 CDP 的输入模拟保留在 Chromium | 待开发 |
-| FEAT-35-04 | 兼容性收敛 | 验证声明支持的 Vue 范围及包入口，提供从 v3.1.x 升级的迁移说明 | 待开发 |
-| FEAT-35-05 | 发布自动化完善 | 统一测试、构建、包消费检查和版本校验，并留存性能基线 | 待开发 |
+| FEAT-35-01 | 诊断示例 | 可切换真实轮廓、AABB、接触法线和安全位置，支持导出场景 JSON | 已验证 |
+| FEAT-35-02 | 完整接入示例 | 普通布局、旋转碰撞、组合移动和受控数据回写，明确坐标系与目标数据要求 | 已验证 |
+| FEAT-35-03 | 浏览器验证扩展 | 通用交互覆盖 Chromium、Firefox、WebKit；依赖 CDP 的输入模拟保留在 Chromium | 已验证 |
+| FEAT-35-04 | 兼容性收敛 | 验证声明支持的 Vue 范围及包入口，提供从 v3.1.x 升级的迁移说明 | 已验证 |
+| FEAT-35-05 | 发布自动化完善 | 统一测试、构建、包消费检查和版本校验，并留存性能基线 | 已验证 |
 
 FIX-08 在 v3.2.0 建立的发布消费门禁持续生效，v3.5.0 在此基础上完善综合验证和结果留存，
 不把基本发布正确性推迟到本版。
 
 **验收：**计划内功能全部具备文档、示例和回归测试；不遗留阻断发布或造成交互状态损坏的缺陷。
+
+**v3.5.0 验证记录（2026-09-10）：**
+- `pnpm test`：208 项单元测试全部通过。
+- `pnpm test:e2e`：三浏览器矩阵（Chromium 152 / Firefox / WebKit 26.4）共 42 项：36 通过、
+  6 项按设计跳过（CDP 触摸合成与隐式捕获探针仅限 Chromium）。新增 `e2e/features.spec.ts`
+  覆盖精确碰撞真实浏览器停位、键盘角度吸附、固定锚点缩放锚点稳定与 gc=all 组合最早接触。
+- `examples/diagnose.html` 与 `examples/integration.html` 由 `pnpm dev`/`vite` 直接服务，
+  诊断页叠加层与导出 JSON、接入页四个场景均按文档约定实现。
+- `pnpm test:package`：10 项检查全部通过（新增"已安装 vue 满足 ^3.3.0 peer 范围"检查）。
+- CI：e2e 作业安装 chromium+firefox+webkit；build 作业（node 20）运行快速性能基线并上传
+  `bench-results.json` 工件；release 作业发布前执行标签/包版本一致性校验与 tarball 消费检查。
+- 双语 README 新增"从 v3.1.x 迁移"章节。
+- 评审记录：两轮独立代码评审（MiniMax-M3 与 DeepSeek）。
+- 环境：Windows 10（win32 10.0.26200），Node 22.15，pnpm 9。
 
 ## 6. 跨版本测试与发布标准
 
@@ -276,6 +290,7 @@ FIX-08 在 v3.2.0 建立的发布消费门禁持续生效，v3.5.0 在此基础�
 | v3.2.0 | 2026-09-10 | precise 旋转碰撞（连续碰撞检测、碰撞目标 rotate/transformOrigin、接触法线）、组合旋转边界、辅助线呈现层、百分比旋转缩放修正、CJS 入口、版本单一来源、惰性吸附、tarball 消费门禁 |
 | v3.3.0 | 2026-09-10 | 固定锚点缩放 resizeMode、canRotate 旋转守卫、rotationSnapAngles 角度吸附、collisionTargets 独立碰撞目标 |
 | v3.4.0 | 2026-09-10 | groupCollision 组合整体碰撞、成员边界快照与批量约束、目标几何缓存（宽相位 AABB 缓存）、完整性能基准与基线留存 |
+| v3.5.0 | 2026-09-10 | 碰撞诊断示例、完整接入示例、Chromium/Firefox/WebKit 三浏览器 e2e 矩阵、Vue peer 范围校验与迁移说明、CI 发布门禁与性能基线留存 |
 
 原路线图记录的 2026-09-09 桌面 Chromium 基准：1,000 元素中的单框拖动约 60 FPS，
 1,000 个全选成员的组合移动平均约 60ms/帧。这是特定场景的历史记录，未在本次文档更新中重测，

@@ -592,6 +592,22 @@ const onMoveStop = payload => {
   外扩而超出区域边缘。
 - 暴露方法：`getSelected()`、`select(ids?)`、`getMemberRects()`。
 
+### 从 v3.1.x 迁移
+
+从 3.1.x 升级到 3.5.0 涉及四个方面。`rotate: 0`、未启用 `collisionEnabled` 且未自定义入口
+导入的方框行为与 3.1.x 完全一致。
+
+1. **precise 碰撞成为默认。**启用 `collisionEnabled` 后，碰撞按双方真实旋转轮廓判定，拖拽使用
+   连续碰撞检测，`collision` 事件携带 `normal`。在旋转轮廓与 AABB 有差异的场景，新旧判定的
+   结论可能不同。迁移期间可按方框设置 `collision-mode="aabb"` 获得与 3.1 完全一致的行为。
+2. **包入口。**`require()`/`main` 现在解析到真正的 CommonJS 产物（`lib/vue-movable-box.cjs`）；
+   `import`/`module` 仍指向 `lib/vue-movable-box.es.js`，UMD 文件地址
+   `lib/vue-movable-box.umd.js` 不变。CDN 使用方请走 `unpkg`/`jsdelivr` 字段。
+3. **浏览器全局安装。**UMD 产物不再通过 `window.Vue.use(...)` 自动安装（Vue 3 全局构建没有
+   `Vue.use`）。请显式注册：`Vue.createApp({ ... }).use(VueMovableBox)`。
+4. **版本导出。**默认导出的 `version` 现在与 `package.json` 完全一致（3.1.0 曾导出
+   `version: '3.0.0'`）；命名导出 `version` 与 `install` 在 3.2.0 新增。
+
 ## TypeScript
 
 完整 TypeScript 类型支持：

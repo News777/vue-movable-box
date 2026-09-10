@@ -24,7 +24,11 @@ const resolveExecutable = () => {
   return candidates.find(candidate => fs.existsSync(candidate));
 };
 
-const SCENARIOS = [100, 500, 1000];
+// Scenario element counts can be narrowed for CI via BENCH_SCENARIOS=100,1000.
+const SCENARIOS = (process.env.BENCH_SCENARIOS ?? '100,500,1000')
+  .split(',')
+  .map(Number)
+  .filter(value => Number.isFinite(value) && value > 0);
 
 // Warm-up runs prime JIT and layout caches; only measured rounds are reported.
 const WARMUP_ROUNDS = 1;

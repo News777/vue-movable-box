@@ -616,6 +616,28 @@ Group semantics:
   the area edge by its rotation overhang.
 - Exposed methods: `getSelected()`, `select(ids?)`, `getMemberRects()`.
 
+### Migration from v3.1.x
+
+Upgrading from 3.1.x to 3.5.0 touches four areas. Boxes with `rotate: 0`, no
+`collisionEnabled`, and no custom entry imports behave identically to 3.1.x.
+
+1. **Precise collision is the default.** With `collisionEnabled`, collisions now resolve
+   against the true rotated contours of both boxes, use continuous collision detection for
+   drags, and report a `normal` in the `collision` payload. Snap/collision candidates that
+   the old AABB approximation accepted or rejected may differ wherever a rotated shape's
+   contour differs from its AABB. Set `collision-mode="aabb"` per box for the exact 3.1
+   behavior while migrating.
+2. **Package entries.** `require()`/`main` now resolve to a real CommonJS bundle
+   (`lib/vue-movable-box.cjs`); `import`/`module` still resolve to
+   `lib/vue-movable-box.es.js`, and the UMD file address `lib/vue-movable-box.umd.js` is
+   unchanged. CDN consumers should use the `unpkg`/`jsdelivr` fields.
+3. **Browser global install.** The UMD bundle no longer auto-installs via
+   `window.Vue.use(...)` (Vue 3 global builds have no `Vue.use`). Register explicitly:
+   `Vue.createApp({ ... }).use(VueMovableBox)`.
+4. **Version export.** The default export's `version` now mirrors `package.json` exactly
+   (3.1.0 shipped `version: '3.0.0'`); the named exports `version` and `install` were
+   added in 3.2.0.
+
 ## TypeScript
 
 Full TypeScript type support:

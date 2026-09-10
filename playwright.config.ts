@@ -11,8 +11,7 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: 'http://127.0.0.1:5197',
-    trace: 'retain-on-failure',
-    launchOptions: executablePath ? { executablePath } : undefined
+    trace: 'retain-on-failure'
   },
   webServer: {
     command: 'pnpm exec vite --host 127.0.0.1 --port 5197 --strictPort',
@@ -23,7 +22,21 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], hasTouch: true }
+      use: {
+        ...devices['Desktop Chrome'],
+        hasTouch: true,
+        // The system Chrome override only applies to the chromium project; firefox and
+        // webkit launch their own Playwright builds.
+        launchOptions: executablePath ? { executablePath } : undefined
+      }
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] }
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] }
     }
   ]
 });
