@@ -1,3 +1,4 @@
+import { PropType } from 'vue';
 import { GroupMemberRect, GroupMoveCancelPayload, GroupMovePayload, GroupMoveStartPayload, GroupMoveStopPayload } from '../../types/MovableGroup';
 
 declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<import('vue').ExtractPropTypes<{
@@ -8,6 +9,15 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     sharedBounds: {
         type: BooleanConstructor;
         default: boolean;
+    };
+    /**
+     * Collision scope for group moves. 'leader' (default) lets the box under the pointer
+     * resolve its own collisions; 'all' additionally limits the shared displacement to the
+     * earliest contact of any selected member with an external obstacle.
+     */
+    groupCollision: {
+        type: PropType<"all" | "leader">;
+        default: string;
     };
 }>, {
     getSelected: () => string[];
@@ -28,6 +38,15 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: BooleanConstructor;
         default: boolean;
     };
+    /**
+     * Collision scope for group moves. 'leader' (default) lets the box under the pointer
+     * resolve its own collisions; 'all' additionally limits the shared displacement to the
+     * earliest contact of any selected member with an external obstacle.
+     */
+    groupCollision: {
+        type: PropType<"all" | "leader">;
+        default: string;
+    };
 }>> & Readonly<{
     onMove?: ((payload: GroupMovePayload<object>) => any) | undefined;
     "onUpdate:selected"?: ((ids: string[]) => any) | undefined;
@@ -37,6 +56,7 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
 }>, {
     selected: string[];
     sharedBounds: boolean;
+    groupCollision: "all" | "leader";
 }, {}, {}, {}, string, import('vue').ComponentProvideOptions, true, {}, any>, {
     default?(_: {}): any;
 }>;

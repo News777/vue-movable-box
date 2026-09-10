@@ -1,0 +1,117 @@
+{
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "devicePixelRatio": 1,
+    "hardwareConcurrency": 16
+  },
+  "results": [
+    {
+      "label": "plain(100)",
+      "mountMs": 46,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.9,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "snap+collision(100)",
+      "mountMs": 33,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.7,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "writeback(100)",
+      "mountMs": 28,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "group-collision-all(100)",
+      "mountMs": 28,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "plain(500)",
+      "mountMs": 115,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "snap+collision(500)",
+      "mountMs": 158,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "writeback(500)",
+      "mountMs": 107,
+      "frames": 62,
+      "p50": 16.7,
+      "p95": 33.4,
+      "max": 49.9,
+      "longFrameRatio": 1.6
+    },
+    {
+      "label": "group-collision-all(500)",
+      "mountMs": 159,
+      "frames": 62,
+      "p50": 16.7,
+      "p95": 33.4,
+      "max": 33.4,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "plain(1000)",
+      "mountMs": 205,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.8,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "snap+collision(1000)",
+      "mountMs": 367,
+      "frames": 40,
+      "p50": 16.6,
+      "p95": 16.8,
+      "max": 16.9,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "writeback(1000)",
+      "mountMs": 198,
+      "frames": 68,
+      "p50": 16.7,
+      "p95": 66.7,
+      "max": 83.8,
+      "longFrameRatio": 29.4
+    },
+    {
+      "label": "group-collision-all(1000)",
+      "mountMs": 395,
+      "frames": 65,
+      "p50": 16.7,
+      "p95": 83.4,
+      "max": 99.9,
+      "longFrameRatio": 30.8
+    }
+  ]
+}

@@ -90,6 +90,19 @@ export const orientedAABB = (rect: OrientedRect): AxisRect => {
   };
 };
 
+// Target rectangles are stable between cache invalidations, so their broad-phase boxes
+// are memoized: group-wide sweeps re-probe every target on every frame.
+const aabbCache = new WeakMap<OrientedRect, AxisRect>();
+
+export const orientedAABBCached = (rect: OrientedRect): AxisRect => {
+  let box = aabbCache.get(rect);
+  if (!box) {
+    box = orientedAABB(rect);
+    aabbCache.set(rect, box);
+  }
+  return box;
+};
+
 const cross = (a: Vec2, b: Vec2) => a.x * b.y - a.y * b.x;
 
 const projectOntoAxis = (polygon: Vec2[], axis: Vec2): { min: number; max: number } => {
@@ -328,7 +341,7 @@ export const sweepTranslation = (
   for (const target of targets) {
     if (target.width <= 0 || target.height <= 0) continue;
     // Broad phase: moving AABB stretched along delta versus target AABB.
-    const targetBox = orientedAABB(target);
+    const targetBox = orientedAABBCached(target);
     const overlapX =
       Math.min(
         movingBox.left + movingBox.width + Math.max(delta.x, 0),
@@ -350,6 +363,12 @@ export const sweepTranslation = (
 };
 
 export const translateRect = (rect: OrientedRect, delta: Vec2): OrientedRect => ({
+  ...rect,
+  left: rect.left + delta.x,
+  top: rect.top + delta.y
+});
+
+export const translateOriented = (rect: OrientedRect, delta: Vec2): OrientedRect => ({
   ...rect,
   left: rect.left + delta.x,
   top: rect.top + delta.y

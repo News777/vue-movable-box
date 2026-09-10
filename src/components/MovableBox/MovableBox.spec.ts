@@ -1,4 +1,4 @@
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import MovableBox from './MovableBox.vue';
@@ -1806,6 +1806,42 @@ describe('MovableBox', () => {
     expect(update.height).toBe(80);
   });
 
+  // --- v3.4.0: target geometry cache (FEAT-34-03) ---
+
+  it('invalidates cached target geometry when a target mutates in place', async () => {
+    const targets = ref([{ id: 'wall', left: 60, top: 0, width: 50, height: 50 }]);
+    const wrapper = mount(MovableBox, {
+      props: {
+        modelValue: makeModel({ left: 0, top: 0, width: 20, height: 20 }),
+        draggable: true,
+        resizable: true,
+        limitAreaForParent: false,
+        collisionEnabled: true,
+        snapTargets: targets.value
+      },
+      attachTo: document.body
+    });
+    const parent = wrapper.element.parentElement as HTMLElement;
+    Object.defineProperty(parent, 'clientWidth', { configurable: true, value: 600 });
+    Object.defineProperty(parent, 'clientHeight', { configurable: true, value: 400 });
+
+    await pointerDrag(wrapper, [0, 0], [60, 0]);
+    expect((wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>).left).toBe(
+      40
+    );
+
+    // Mutate the target in place: the geometry cache must invalidate and the same drag
+    // must now pass freely.
+    targets.value[0].left = 300;
+    await nextTick();
+
+    await wrapper.setProps({ modelValue: makeModel({ left: 0, top: 0, width: 20, height: 20 }) });
+    await pointerDrag(wrapper, [0, 0], [60, 0]);
+    expect((wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>).left).toBe(
+      60
+    );
+  });
+
   // --- v3.3.0: transform interaction enhancements ---
 
   it('rejects pointer rotation through canRotate without side effects', async () => {
@@ -1960,12 +1996,10 @@ describe('MovableBox', () => {
       resizeDirections: ['mr'],
       resizeMode: 'fixed-anchor'
     });
-    const anchorBefore = localToWorld(
-      { left: 10, top: 20, width: 100, height: 50 },
-      45,
-      'center',
-      { x: 0, y: 25 }
-    );
+    const anchorBefore = localToWorld({ left: 10, top: 20, width: 100, height: 50 }, 45, 'center', {
+      x: 0,
+      y: 25
+    });
     await pointerDrag(wrapper, [110, 45], [160, 45], '.handle-mr');
     const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
     // A 50px horizontal drag projects onto the rotated local x axis: width grows by

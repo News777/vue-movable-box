@@ -28,6 +28,17 @@ export interface GroupMemberApi {
   getVisualRect: () => GroupVisualRect;
   translateTo: (rect: ExtendsMovableBox) => void;
   getAreaEdges: () => GroupAreaEdges | null;
+  /**
+   * Largest fraction of a shared translation delta this member can absorb without
+   * colliding, in [0, 1], swept from the member's drag-start rectangle (the group
+   * re-applies the limited delta to that same rectangle on every frame). A start
+   * position already overlapping an obstacle returns 1 only for escape motions that
+   * strictly shrink the overlap, and 0 otherwise.
+   */
+  sharedDeltaProgress: (
+    startRect: ExtendsMovableBox,
+    delta: { left: number; top: number }
+  ) => number;
 }
 
 export interface GroupDragSession {

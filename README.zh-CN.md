@@ -437,6 +437,10 @@ boxRef.value.cancelInteraction();
 `collisionTargets` 将碰撞障碍物与吸附对象分别配置。未传时吸附目标兼作障碍物；显式空数组表示
 没有碰撞障碍物，吸附仍然生效。
 
+`MovableGroup` 支持 `groupCollision`（默认 `'leader'`，可选 `'all'`）：`'all'` 模式下组合统一
+位移收缩到任一选中成员与外部障碍物的最早接触处，组内成员相互排除；leader 自身的碰撞在两种
+模式下都由其交互管线解析。
+
 ### 键盘控制
 
 ```vue

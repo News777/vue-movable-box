@@ -459,6 +459,8 @@ Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
 
 `collisionTargets` configures obstacles independently of snapping. When omitted the snap targets act as obstacles; an explicit empty array disables collision obstacles while snapping keeps working.
 
+`MovableGroup` accepts `groupCollision` (`'leader'` default, `'all'`): in `'all'` mode the shared group displacement shrinks to the earliest contact of any selected member with an external obstacle, while members stay mutually excluded. The leader's own collisions are resolved by its own interaction pipeline in both modes.
+
 ### Keyboard Control
 
 ```vue

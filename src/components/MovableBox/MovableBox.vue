@@ -136,8 +136,14 @@ import type {
   SnapEventPayload
 } from '../../types/MovableBox';
 import type { SnapAxes, SnapResult } from './utils/snap';
-import type { OrientedRect } from './utils/oriented';
-import { orientedAABB, orientedOverlap } from './utils/oriented';
+import {
+  orientedAABB,
+  orientedOverlap,
+  sweepTranslation,
+  translateOriented,
+  type OrientedRect
+} from './utils/oriented';
+import { findFirstCollisionPathInterval } from './utils/collision';
 import { addEvent, deepClone, keepDecimalsToNum, removeEvent, setValUnit, valIsNaN } from './utils';
 
 const props = defineProps({
@@ -593,7 +599,30 @@ const orientedFromPlane = (
 const selfOriented = (rect: ExtendsMovableBox, angle = rotationAngle.value): OrientedRect =>
   orientedFromPlane(numericPlane(rect), angle, props.transformOrigin);
 
-const orientedSnapTarget = (target: SnapTarget): OrientedRect => {
+// Target geometry depends on the target's own fields (position, size, angle, origin) and
+// on the container dimensions when unitType is percent. The version counter invalidates
+// the cache on any of those changes; unresolved entries are recomputed on demand.
+let targetGeometryVersion = 0;
+let targetGeometryCache: WeakMap<SnapTarget, OrientedRect> | null = null;
+// Bumping the version drops every cached entry lazily on next access; the WeakMap is
+// rebuilt once per generation so stale geometry can never be served after invalidation.
+const invalidateTargetGeometry = () => {
+  targetGeometryVersion += 1;
+  targetGeometryCache = null;
+};
+watch(
+  () => [props.snapTargets, props.collisionTargets, props.transformOrigin],
+  invalidateTargetGeometry,
+  { deep: true }
+);
+watch(() => [state.parentWidth, state.parentHeight, props.unitType], invalidateTargetGeometry);
+
+const computeOrientedTarget = (target: SnapTarget): OrientedRect => {
+  if (targetGeometryCache === null) {
+    targetGeometryCache = new WeakMap();
+  }
+  const cached = targetGeometryCache.get(target);
+  if (cached) return cached;
   const scale = getPlaneScale();
   const plane = {
     left: asNumber(target.left) * scale.x,
@@ -601,13 +630,17 @@ const orientedSnapTarget = (target: SnapTarget): OrientedRect => {
     width: asNumber(target.width) * scale.x,
     height: asNumber(target.height) * scale.y
   };
-  return {
+  const oriented: OrientedRect = {
     ...plane,
     id: target.id,
     angle: normalizeAngle(target.rotate ?? 0),
     origin: resolveTransformOrigin(target.transformOrigin ?? 'center', plane.width, plane.height)
   };
+  targetGeometryCache.set(target, oriented);
+  return oriented;
 };
+
+const orientedSnapTarget = (target: SnapTarget): OrientedRect => computeOrientedTarget(target);
 
 const orientedSnapTargets = (): OrientedRect[] => collisionObstacles().map(orientedSnapTarget);
 
@@ -1067,18 +1100,69 @@ const groupContext = inject(GROUP_CONTEXT_KEY, null);
 const memberIdentity =
   props.memberId || `member-${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
 let groupDragLeader = false;
+// Progress values are quantized to six decimals (floored, never above the true entry) so
+// the shared group delta lands on the contact position without sweep float residue and
+// without rounding into the obstacle.
+const quantizeProgress = (progress: number) => Math.max(0, Math.floor(progress * 1e6) / 1e6);
+
 const memberApi: GroupMemberApi = {
   getRect: () => cloneRect(internalRect.value),
   getVisualRect: () => geometryProbe(cloneRect(internalRect.value)),
   translateTo: rect => {
     commitRect(rect);
   },
+  // The group constraint loop runs per frame, so re-resolving layout on every call would
+  // dominate group drags. Resolve the area lazily once per member, then reuse the
+  // snapshot (refreshed at each interaction start by the box itself).
   getAreaEdges: () => {
-    refreshArea();
+    if (!state.parentElement) refreshArea();
     return state.parentElement ? getAreaEdges() : null;
+  },
+  // Largest fraction of a shared group delta this box can absorb without colliding,
+  // swept from the member's drag-start rectangle: the group re-applies the limited delta
+  // to the start rectangle on every frame, so both sides must reference the same origin.
+  // A start position already overlapping an obstacle only permits escape motions that
+  // strictly shrink the overlap, matching the interaction pipeline's escape rule.
+  sharedDeltaProgress: (startRect, delta) => {
+    if (!props.collisionEnabled || props.allowOverlap) return 1;
+    const scale = getPlaneScale();
+    if (isPreciseCollision.value) {
+      const targets = orientedSnapTargets();
+      const fromOriented = selfOriented(startRect);
+      const deltaPx = { x: delta.left * scale.x, y: delta.top * scale.y };
+      const overlapAt = (rect: OrientedRect) => {
+        let total = 0;
+        for (const target of targets) total += orientedOverlap(rect, target).overlapArea;
+        return total;
+      };
+      const fromOverlap = overlapAt(fromOriented);
+      if (fromOverlap > 0) {
+        const toOverlap = overlapAt(translateOriented(fromOriented, deltaPx));
+        return toOverlap < fromOverlap ? 1 : 0;
+      }
+      const sweep = sweepTranslation(fromOriented, deltaPx, targets);
+      if (!sweep) return 1;
+      return quantizeProgress(sweep.interval.entry);
+    }
+    const fromPlane = numericPlane(startRect);
+    const toPlane = {
+      ...fromPlane,
+      left: fromPlane.left + delta.left,
+      top: fromPlane.top + delta.top
+    };
+    const interval = findFirstCollisionPathInterval(fromPlane, toPlane, collisionObstacles());
+    if (!interval) return 1;
+    return quantizeProgress(interval.entry);
   }
 };
-onMounted(() => groupContext?.registerMember(memberIdentity, memberApi));
+onMounted(() => {
+  groupContext?.registerMember(memberIdentity, memberApi);
+  // Container resizes mid-interaction must reach the target-geometry cache and the area
+  // snapshot; jsdom and older environments without ResizeObserver fall back to this.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', refreshArea);
+  }
+});
 
 const externalSnapTargets = () =>
   groupContext
@@ -2197,6 +2281,9 @@ defineExpose<MovableBoxExpose>({
 onUnmounted(() => {
   dropPendingFrame();
   closeInteraction();
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', refreshArea);
+  }
   groupContext?.unregisterMember(memberIdentity);
   // Skip finalizeInteraction during unmount: setActive(false) would emit 'inactive' while tearing down.
   clearAdvancedState();

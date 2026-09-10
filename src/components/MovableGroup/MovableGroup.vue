@@ -3,7 +3,7 @@
 </template>
 
 <script setup lang="ts" name="MovableGroup">
-import { computed, provide, ref, watch } from 'vue';
+import { computed, provide, ref, watch, type PropType } from 'vue';
 import type { ExtendsMovableBox } from '../../types/MovableBox';
 import type {
   GroupMemberMoveRecord,
@@ -27,7 +27,16 @@ import {
 
 const props = defineProps({
   selected: { type: Array as () => string[], default: undefined },
-  sharedBounds: { type: Boolean, default: true }
+  sharedBounds: { type: Boolean, default: true },
+  /**
+   * Collision scope for group moves. 'leader' (default) lets the box under the pointer
+   * resolve its own collisions; 'all' additionally limits the shared displacement to the
+   * earliest contact of any selected member with an external obstacle.
+   */
+  groupCollision: {
+    type: String as PropType<'leader' | 'all'>,
+    default: 'leader'
+  }
 });
 
 const emit = defineEmits<{
@@ -109,6 +118,26 @@ const memberRecords = (startRects: Map<string, ExtendsMovableBox>): GroupMemberM
 const toMemberRects = (records: GroupMemberMoveRecord[]): GroupMemberRect[] =>
   records.map(({ id, rect }) => ({ id, rect }));
 
+// In 'all' mode the shared displacement shrinks to the earliest contact of any selected
+// member with an external obstacle. The leader resolves its own collisions in its own
+// interaction pipeline, so only the followers limit the shared delta here.
+const limitDeltaByMembers = (
+  current: GroupDragSession,
+  leaderId: string,
+  delta: { left: number; top: number }
+): { left: number; top: number } => {
+  if (props.groupCollision !== 'all') return delta;
+  let progress = 1;
+  for (const memberId of current.startRects.keys()) {
+    if (memberId === leaderId) continue;
+    const member = members.get(memberId);
+    if (!member) continue;
+    const memberProgress = member.sharedDeltaProgress(current.startRects.get(memberId)!, delta);
+    if (memberProgress < progress) progress = memberProgress;
+  }
+  return { left: delta.left * progress, top: delta.top * progress };
+};
+
 const setSelection = (ids: string[]) => {
   const next = ids.filter(id => members.has(id));
   const current = selectedIds.value;
@@ -172,6 +201,7 @@ const context: GroupContext = {
       // rotated member cannot swing outside the area while the formation keeps its shape.
       let delta = { left: deltaLeft, top: deltaTop };
       if (edges) delta = clampDeltaToEdges([...current.startVisuals.values()], delta, edges);
+      delta = limitDeltaByMembers(current, id, delta);
       for (const [memberId, startRect] of current.startRects) {
         if (memberId === id) continue;
         members.get(memberId)?.translateTo(translate(startRect, delta.left, delta.top));
@@ -188,7 +218,11 @@ const context: GroupContext = {
       const member = members.get(memberId);
       if (!member) continue;
       const visual = current.startVisuals.get(memberId);
-      const target = translate(startRect, deltaLeft, deltaTop);
+      const progress =
+        props.groupCollision === 'all'
+          ? member.sharedDeltaProgress(startRect, { left: deltaLeft, top: deltaTop })
+          : 1;
+      const target = translate(startRect, deltaLeft * progress, deltaTop * progress);
       const memberEdges = member.getAreaEdges();
       if (memberEdges && visual) {
         const visualOffsetLeft = visual.left - asNumber(startRect.left);

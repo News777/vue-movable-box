@@ -38,6 +38,13 @@ export interface MovableGroupProps {
      * When false every member is clamped individually. Default true.
      */
     sharedBounds?: boolean;
+    /**
+     * Collision scope for group moves. 'leader' (default) lets the box under the pointer
+     * resolve its own collisions; 'all' limits the shared displacement to the earliest
+     * contact of any selected member with an external obstacle. With sharedBounds disabled
+     * the 'all' scope applies per member instead of to one unified displacement.
+     */
+    groupCollision?: 'leader' | 'all';
 }
 export interface MovableGroupExpose {
     /** Currently selected member ids. */

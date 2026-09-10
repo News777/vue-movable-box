@@ -38,6 +38,7 @@ interface GroupMountOptions {
   rects?: Record<string, TestRect>;
   selected?: string[];
   sharedBounds?: boolean;
+  groupCollision?: 'leader' | 'all';
   area?: { width: number; height: number };
   boxProps?: Record<string, Partial<MovableBoxProps>>;
 }
@@ -56,6 +57,7 @@ const mountGroup = (options: GroupMountOptions = {}) => {
     },
     selected = ['a', 'b'],
     sharedBounds = true,
+    groupCollision = 'leader',
     area = { width: 600, height: 400 },
     boxProps = {}
   } = options;
@@ -82,7 +84,8 @@ const mountGroup = (options: GroupMountOptions = {}) => {
               'onUpdate:selected': (ids: string[]) => {
                 selectedRef.value = ids;
               },
-              sharedBounds
+              sharedBounds,
+              groupCollision
             },
             {
               default: () =>
@@ -484,5 +487,127 @@ describe('MovableGroup', () => {
     expect(Number(harness.models.b.left) + 120.71).toBeLessThanOrEqual(600.01);
     expect(harness.models.b.left).toBeCloseTo(479.29, 0);
     expect(harness.models.a.left).toBeCloseTo(429, 0);
+  });
+
+  // --- v3.4.0: group-wide collision (FEAT-34-01) ---
+
+  it('lets follower members pass through obstacles in leader collision mode', async () => {
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 0, top: 0 }),
+        b: makeRect({ left: 200, top: 0 })
+      },
+      selected: ['a', 'b'],
+      groupCollision: 'leader',
+      boxProps: {
+        a: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'wall', left: 350, top: 0, width: 50, height: 50 }]
+        },
+        b: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'wall', left: 350, top: 0, width: 50, height: 50 }]
+        }
+      }
+    });
+    await dragBox(harness, 0, [50, 25], [250, 25]);
+    // Only the leader resolves its own collisions (the wall is beyond its own path);
+    // member b tunnels through the wall with the shared delta.
+    expect(harness.models.a.left).toBe(200);
+    expect(harness.models.b.left).toBe(400);
+  });
+
+  it('limits the shared displacement to the earliest follower contact in all mode', async () => {
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 0, top: 0 }),
+        b: makeRect({ left: 200, top: 0 })
+      },
+      selected: ['a', 'b'],
+      groupCollision: 'all',
+      boxProps: {
+        a: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'wall', left: 350, top: 0, width: 50, height: 50 }]
+        },
+        b: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'wall', left: 350, top: 0, width: 50, height: 50 }]
+        }
+      }
+    });
+    await dragBox(harness, 0, [50, 25], [250, 25]);
+
+    // The shared delta shrinks to the earliest contact: member b's right edge reaches the
+    // wall (delta 50), and the whole formation stops together.
+    expect(harness.models.b.left).toBe(250);
+    expect(harness.models.a.left).toBe(50);
+  });
+
+  it('holds the earliest contact across consecutive frames without bouncing', async () => {
+    // Regression: the shared-delta sweep once referenced the member's current rectangle,
+    // so the second frame swept from the contact position and snapped the group back to
+    // its start every other frame.
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 0, top: 0 }),
+        b: makeRect({ left: 200, top: 0 })
+      },
+      selected: ['a', 'b'],
+      groupCollision: 'all',
+      boxProps: {
+        a: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'wall', left: 350, top: 0, width: 50, height: 50 }]
+        },
+        b: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'wall', left: 350, top: 0, width: 50, height: 50 }]
+        }
+      }
+    });
+    await harness.boxes()[0].trigger('pointerdown', { clientX: 50, clientY: 25, pointerId: 1 });
+
+    // Frame 1: delta 100. Member b reaches the wall (progress 0.5): both stop at +50.
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 150, 25));
+    await flushFrame();
+    expect(harness.models.a.left).toBe(50);
+    expect(harness.models.b.left).toBe(250);
+
+    // Frame 2: total delta 350 from the drag start. The contact fraction (50/350) keeps
+    // the formation at the same spot instead of bouncing back to the start.
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 400, 25));
+    await flushFrame();
+    expect(harness.models.a.left).toBe(50);
+    expect(harness.models.b.left).toBe(250);
+
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 400, 25));
+    await nextTick();
+  });
+
+  it('keeps members mutually excluded while resolving group-wide collisions', async () => {
+    // Member b's target list includes member a; group filtering must keep the formation
+    // from self-blocking in 'all' mode.
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 0, top: 0 }),
+        b: makeRect({ left: 150, top: 0 })
+      },
+      selected: ['a', 'b'],
+      groupCollision: 'all',
+      boxProps: {
+        a: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'a', left: 0, top: 0, width: 100, height: 50 }]
+        },
+        b: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'a', left: 0, top: 0, width: 100, height: 50 }]
+        }
+      }
+    });
+    await dragBox(harness, 0, [50, 25], [120, 25]);
+    expect(harness.models.a.left).toBe(70);
+    expect(harness.models.b.left).toBe(220);
   });
 });
