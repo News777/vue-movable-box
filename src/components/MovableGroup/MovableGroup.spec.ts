@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import MovableBox from '../MovableBox/MovableBox.vue';
 import MovableGroup from './MovableGroup.vue';
-import type { ExtendsMovableBox } from '../../types/MovableBox';
+import type { ExtendsMovableBox, MovableBoxProps } from '../../types/MovableBox';
 
 const flushFrame = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -39,6 +39,7 @@ interface GroupMountOptions {
   selected?: string[];
   sharedBounds?: boolean;
   area?: { width: number; height: number };
+  boxProps?: Record<string, Partial<MovableBoxProps>>;
 }
 
 interface GroupHostExpose {
@@ -55,7 +56,8 @@ const mountGroup = (options: GroupMountOptions = {}) => {
     },
     selected = ['a', 'b'],
     sharedBounds = true,
-    area = { width: 600, height: 400 }
+    area = { width: 600, height: 400 },
+    boxProps = {}
   } = options;
 
   const models: Record<string, TestRect> = { ...rects };
@@ -86,6 +88,7 @@ const mountGroup = (options: GroupMountOptions = {}) => {
               default: () =>
                 Object.entries(models).map(([id, rect]) =>
                   h(MovableBox, {
+                    ...(boxProps[id] ?? {}),
                     memberId: id,
                     modelValue: rect,
                     'onUpdate:modelValue': (value: TestRect) => {
@@ -144,10 +147,70 @@ describe('MovableGroup', () => {
     expect(harness.models.c).toMatchObject({ left: 300, top: 0 });
     expect(harness.selectedRef.value).toEqual(['a', 'b']);
 
-    const updateEmits = harness.wrapper.findAllComponents(MovableBox).map(box =>
-      box.emitted('update:modelValue')?.length ?? 0
-    );
+    const updateEmits = harness.wrapper
+      .findAllComponents(MovableBox)
+      .map(box => box.emitted('update:modelValue')?.length ?? 0);
     expect(updateEmits).toEqual([expect.any(Number), expect.any(Number), 0]);
+  });
+
+  it('ignores registered group members when snapping the leader', async () => {
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 100 }),
+        b: makeRect({ left: 250 })
+      },
+      boxProps: {
+        b: {
+          snapToElements: true,
+          snapTargets: [{ id: 'a', left: 100, top: 0, width: 100, height: 50 }]
+        }
+      }
+    });
+
+    await harness.boxes()[1].trigger('pointerdown', {
+      clientX: 300,
+      clientY: 25,
+      pointerId: 1
+    });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 260, 25));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 240, 25));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 240, 25));
+    await nextTick();
+
+    expect(harness.models.a).toMatchObject({ left: 40 });
+    expect(harness.models.b).toMatchObject({ left: 190 });
+  });
+
+  it('ignores registered group members when resolving leader collisions', async () => {
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 100 }),
+        b: makeRect({ left: 250 })
+      },
+      boxProps: {
+        b: {
+          collisionEnabled: true,
+          snapTargets: [{ id: 'a', left: 100, top: 0, width: 100, height: 50 }]
+        }
+      }
+    });
+
+    await harness.boxes()[1].trigger('pointerdown', {
+      clientX: 300,
+      clientY: 25,
+      pointerId: 1
+    });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 260, 25));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 200, 25));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 200, 25));
+    await nextTick();
+
+    expect(harness.models.a).toMatchObject({ left: 0 });
+    expect(harness.models.b).toMatchObject({ left: 150 });
   });
 
   it('replaces the selection when the leader is unselected', async () => {
@@ -158,6 +221,14 @@ describe('MovableGroup', () => {
     expect(harness.models.c).toMatchObject({ left: 330, top: 0 });
     expect(harness.models.a).toMatchObject({ left: 0, top: 0 });
     expect(harness.models.b).toMatchObject({ left: 150, top: 0 });
+    const start = harness.group.emitted('move-start')?.at(-1)?.[0] as {
+      rects: { id: string }[];
+    };
+    const stop = harness.group.emitted('move-stop')?.at(-1)?.[0] as {
+      rects: { id: string }[];
+    };
+    expect(start.rects.map(record => record.id)).toEqual(['c']);
+    expect(stop.rects.map(record => record.id)).toEqual(['c']);
   });
 
   it('emits immutable batch payloads during and after the move', async () => {
@@ -220,6 +291,24 @@ describe('MovableGroup', () => {
     expect(harness.models.b).toMatchObject({ left: 70, top: 0 });
   });
 
+  it('uses each member bounds when sharedBounds is off', async () => {
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 100 }),
+        b: makeRect({ left: 250 })
+      },
+      sharedBounds: false,
+      boxProps: {
+        a: { boundsMargin: { left: 100 } }
+      }
+    });
+
+    await dragBox(harness, 1, [300, 25], [220, 25]);
+
+    expect(harness.models.a).toMatchObject({ left: 100 });
+    expect(harness.models.b).toMatchObject({ left: 170 });
+  });
+
   it('ignores a second concurrent leader instead of hijacking the active session', async () => {
     const harness = mountGroup();
     // Start dragging b (opens the group session)...
@@ -247,6 +336,34 @@ describe('MovableGroup', () => {
     expect(harness.models.a).toMatchObject({ left: 40, top: 20 });
     expect(harness.models.b).toMatchObject({ left: 190, top: 20 });
     expect(harness.selectedRef.value).toEqual(['a', 'b']);
+  });
+
+  it('does not let a second selected member reuse the active leader session', async () => {
+    const harness = mountGroup();
+    await harness.boxes()[1].trigger('pointerdown', {
+      clientX: 200,
+      clientY: 25,
+      pointerId: 2
+    });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 240, 45, { pointerId: 2 }));
+    await flushFrame();
+
+    await harness.boxes()[0].trigger('pointerdown', {
+      clientX: 40,
+      clientY: 20,
+      pointerId: 7
+    });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 110, 20, { pointerId: 7 }));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 110, 20, { pointerId: 7 }));
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 240, 45, { pointerId: 2 }));
+    await nextTick();
+
+    expect(harness.models.a).toMatchObject({ left: 40, top: 20 });
+    expect(harness.models.b).toMatchObject({ left: 190, top: 20 });
+    expect(harness.wrapper.findAllComponents(MovableBox)[0].emitted('drag-start')).toBeUndefined();
+    expect(harness.group.emitted('move-start')).toHaveLength(1);
+    expect(harness.group.emitted('move-stop')).toHaveLength(1);
   });
 
   it('restores every member when the leader interaction is cancelled', async () => {
@@ -291,13 +408,15 @@ describe('MovableGroup', () => {
 
   it('exposes selection helpers and registered member rectangles', async () => {
     const harness = mountGroup();
-    const groupExpose = (harness.group.vm.$ as unknown as {
-      exposed: {
-        getSelected: () => string[];
-        select: (ids?: string[]) => void;
-        getMemberRects: () => { id: string }[];
-      };
-    }).exposed;
+    const groupExpose = (
+      harness.group.vm.$ as unknown as {
+        exposed: {
+          getSelected: () => string[];
+          select: (ids?: string[]) => void;
+          getMemberRects: () => { id: string }[];
+        };
+      }
+    ).exposed;
 
     expect(groupExpose.getSelected()).toEqual(['a', 'b']);
     expect(groupExpose.getMemberRects().map(member => member.id)).toEqual(['a', 'b', 'c']);

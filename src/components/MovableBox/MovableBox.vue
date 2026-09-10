@@ -8,6 +8,7 @@
       'is-active': state.active,
       'is-dragging': state.isDragging,
       'is-resizing': state.isResizing,
+      'is-rotating': state.isRotating,
       'is-readonly': initRect
     }"
     :style="movableStyle"
@@ -29,6 +30,31 @@
       class="movable-box-guide movable-box-guide--horizontal"
       :style="horizontalGuideStyle(guide)"
     ></div>
+
+    <div
+      v-show="state.active && rotatable && !disabled && !initRect"
+      class="rotation-handle-connector"
+      :style="rotationHandleStyle"
+      aria-hidden="true"
+    ></div>
+    <div
+      v-show="state.active && rotatable && !disabled && !initRect"
+      class="rotation-handle"
+      :style="rotationHandleStyle"
+      role="slider"
+      aria-label="Rotation"
+      aria-orientation="horizontal"
+      :aria-valuenow="rotationAngle"
+      aria-valuemin="-180"
+      aria-valuemax="180"
+      :aria-valuetext="`${rotationAngle} degrees`"
+      :aria-keyshortcuts="keyboardEnabled ? 'ArrowLeft ArrowRight Home' : undefined"
+      :tabindex="keyboardEnabled ? 0 : undefined"
+      @pointerdown.stop.prevent="handleRotationPointerDown"
+      @keydown="handleRotationKeyDown"
+    >
+      <span class="rotation-handle-mark" aria-hidden="true"></span>
+    </div>
 
     <template v-for="handle in handles" :key="handle">
       <div
@@ -69,12 +95,19 @@ import {
   type CSSProperties,
   type PropType
 } from 'vue';
-import { useCollision, useGrid, useKeyboard, useSnap } from './composables';
+import {
+  normalizeKeyboardStep,
+  useCollision,
+  useGrid,
+  useKeyboard,
+  useSnap
+} from './composables';
 import { asNumber, clamp, sameRect } from './core/box-geometry';
 import {
   angleToRadians,
   deltaToLocal,
   normalizeAngle,
+  normalizeTransformOrigin,
   resolveTransformOrigin,
   rotatedAABBAt
 } from './utils/rotation';
@@ -93,14 +126,7 @@ import type {
   SnapEventPayload
 } from '../../types/MovableBox';
 import type { SnapAxes, SnapResult } from './utils/snap';
-import {
-  addEvent,
-  deepClone,
-  keepDecimalsToNum,
-  removeEvent,
-  setValUnit,
-  valIsNaN
-} from './utils';
+import { addEvent, deepClone, keepDecimalsToNum, removeEvent, setValUnit, valIsNaN } from './utils';
 
 const props = defineProps({
   theme: { type: String, default: '#409EFD' },
@@ -178,12 +204,17 @@ const props = defineProps({
   memberId: String,
   /** Clockwise rotation in degrees; geometry uses the rotated AABB (see README). */
   rotate: { type: [Number, String] as PropType<number | string>, default: 0 },
+  /** Shows an interactive rotation handle while the box is active. */
+  rotatable: { type: Boolean, default: false },
+  /** Visual distance in pixels between the box and the rotation handle. */
+  rotationHandleOffset: { type: Number, default: 28 },
   /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
   transformOrigin: { type: String, default: 'center' }
 });
 
 const emit = defineEmits<{
   (event: 'update:modelValue', value: ExtendsMovableBox): void;
+  (event: 'update:rotate', value: number): void;
   (event: 'drag', value: ExtendsMovableBox): void;
   (event: 'drag-start', source: PointerEvent, value: ExtendsMovableBox): void;
   (
@@ -212,6 +243,10 @@ const emit = defineEmits<{
     newValue: ExtendsMovableBox
   ): void;
   (event: 'resize', value: ExtendsMovableBox): void;
+  (event: 'rotate-start', source: Event, value: number): void;
+  (event: 'rotate', value: number): void;
+  (event: 'rotate-stop', source: Event, oldValue: number, newValue: number): void;
+  (event: 'rotate-cancel', source: Event | null, oldValue: number, newValue: number): void;
   (event: 'move', value: ExtendsMovableBox): void;
   (event: 'active', value: ExtendsMovableBox): void;
   (event: 'inactive', value: ExtendsMovableBox): void;
@@ -226,17 +261,45 @@ const emit = defineEmits<{
 const cloneRect = (value: ExtendsMovableBox) => deepClone(value);
 const movableRef = ref<HTMLElement>();
 const internalRect = ref<ExtendsMovableBox>(cloneRect(props.modelValue));
+const internalRotation = ref(normalizeAngle(props.rotate));
 const initialRect = cloneRect(props.modelValue);
 const focusedHandle = ref<HandlePosition | null>(null);
+type InteractionMode = 'idle' | 'drag' | 'resize' | 'rotate';
+type HandleEdges = Record<'left' | 'right' | 'top' | 'bottom', boolean>;
+const HANDLE_EDGES: Record<HandlePosition, HandleEdges> = {
+  tl: { left: true, right: false, top: true, bottom: false },
+  tm: { left: false, right: false, top: true, bottom: false },
+  tr: { left: false, right: true, top: true, bottom: false },
+  ml: { left: true, right: false, top: false, bottom: false },
+  mr: { left: false, right: true, top: false, bottom: false },
+  bl: { left: true, right: false, top: false, bottom: true },
+  bm: { left: false, right: false, top: false, bottom: true },
+  br: { left: false, right: true, top: false, bottom: true }
+};
 
 const state = reactive({
   active: props.active,
-  isDragging: false,
-  isResizing: false,
+  interactionMode: 'idle' as InteractionMode,
+  get isDragging() {
+    return this.interactionMode === 'drag';
+  },
+  get isResizing() {
+    return this.interactionMode === 'resize';
+  },
+  get isRotating() {
+    return this.interactionMode === 'rotate';
+  },
+  get isInteracting() {
+    return this.interactionMode !== 'idle';
+  },
   handle: null as HandlePosition | null,
   initX: 0,
   initY: 0,
   beforeInteraction: cloneRect(props.modelValue),
+  beforeRotation: normalizeAngle(props.rotate),
+  rotationStartPointerAngle: 0,
+  rotationOriginX: 0,
+  rotationOriginY: 0,
   parentElement: null as HTMLElement | null,
   parentWidth: 0,
   parentHeight: 0,
@@ -253,9 +316,16 @@ watch(
 );
 
 watch(
+  () => props.rotate,
+  value => {
+    internalRotation.value = normalizeAngle(value);
+  }
+);
+
+watch(
   () => props.active,
   value => {
-    if (!value && (state.isDragging || state.isResizing)) abortInteraction();
+    if (!value && state.isInteracting) abortInteraction();
     else setActive(value);
   },
   { flush: 'sync' }
@@ -293,7 +363,8 @@ watch(
 
 const isResizable = computed(() => props.resizable ?? props.resizeable ?? true);
 const isPercent = computed(() => props.unitType === '%');
-const rotationAngle = computed(() => normalizeAngle(props.rotate));
+const rotationAngle = computed(() => internalRotation.value);
+const transformOriginStyle = computed(() => normalizeTransformOrigin(props.transformOrigin));
 
 const movableStyle = computed<CSSProperties>(() => ({
   '--movable-box-theme': props.theme,
@@ -313,16 +384,23 @@ const movableStyle = computed<CSSProperties>(() => ({
       ? 'move'
       : state.isResizing
         ? 'nwse-resize'
-        : 'default',
+        : state.isRotating
+          ? 'grabbing'
+          : 'default',
   pointerEvents: props.disabled ? 'none' : 'auto',
   opacity: state.active ? 1 : 0.9,
   transform: rotationAngle.value
     ? `rotate(${rotationAngle.value}deg) translateZ(0)`
     : 'translateZ(0)',
-  transformOrigin: props.transformOrigin,
-  willChange: state.isDragging || state.isResizing ? 'left, top, width, height' : 'auto',
+  transformOrigin: transformOriginStyle.value,
+  willChange:
+    state.isDragging || state.isResizing
+      ? 'left, top, width, height'
+      : state.isRotating
+        ? 'transform'
+        : 'auto',
   transition:
-    props.enableTransition && !state.isDragging && !state.isResizing
+    props.enableTransition && !state.isInteracting
       ? 'left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease'
       : 'none'
 }));
@@ -332,10 +410,31 @@ const handleStyle = computed<CSSProperties>(() => ({
   scale: keepDecimalsToNum(1 / valIsNaN(props.scale, 1), 1)
 }));
 
+const rotationHandleStyle = computed<CSSProperties>(() => {
+  const scale = Math.abs(valIsNaN(props.scale, 1)) || 1;
+  const configuredOffset = Number.isFinite(props.rotationHandleOffset)
+    ? Math.max(0, props.rotationHandleOffset)
+    : 28;
+  return {
+    '--rotation-handle-offset': `${configuredOffset / scale}px`,
+    '--rotation-handle-scale': keepDecimalsToNum(1 / scale, 3),
+    borderColor: props.theme,
+    color: props.theme
+  };
+});
+
 const commitRect = (next: ExtendsMovableBox) => {
   const value = cloneRect(next);
   internalRect.value = value;
   emit('update:modelValue', cloneRect(value));
+  return value;
+};
+
+const commitRotation = (next: number) => {
+  const value = normalizeAngle(roundValue(normalizeAngle(next)));
+  internalRotation.value = value;
+  emit('update:rotate', value);
+  emit('rotate', value);
   return value;
 };
 
@@ -401,14 +500,32 @@ const numericPlane = (rect: ExtendsMovableBox) => ({
   height: asNumber(rect.height)
 });
 
+const getPlaneScale = () => ({
+  x: isPercent.value && state.parentWidth > 0 ? state.parentWidth / 100 : 1,
+  y: isPercent.value && state.parentHeight > 0 ? state.parentHeight / 100 : 1
+});
+
 // Rotated boxes are probed as their axis-aligned bounding box for bounds, snapping,
 // and collision; shifts on the probe map 1:1 back onto the unrotated rectangle.
 const geometryProbe = (rect: ExtendsMovableBox) => {
   const plane = numericPlane(rect);
   const angle = rotationAngle.value;
   if (!angle) return plane;
-  const origin = resolveTransformOrigin(props.transformOrigin, plane.width, plane.height);
-  return rotatedAABBAt(plane, angle, origin);
+  const scale = getPlaneScale();
+  const pixelPlane = {
+    left: plane.left * scale.x,
+    top: plane.top * scale.y,
+    width: plane.width * scale.x,
+    height: plane.height * scale.y
+  };
+  const origin = resolveTransformOrigin(props.transformOrigin, pixelPlane.width, pixelPlane.height);
+  const pixelProbe = rotatedAABBAt(pixelPlane, angle, origin);
+  return {
+    left: pixelProbe.left / scale.x,
+    top: pixelProbe.top / scale.y,
+    width: pixelProbe.width / scale.x,
+    height: pixelProbe.height / scale.y
+  };
 };
 
 // Shrinks an over-large rotated rectangle so its AABB fits the area; clamping alone
@@ -431,14 +548,158 @@ const fitRotatedSizeToArea = (
   // treat 90/180-degree spans as truly decoupled.
   const cosA = Math.abs(Math.cos(rad)) < 1e-9 ? 0 : Math.abs(Math.cos(rad));
   const sinA = Math.abs(Math.sin(rad)) < 1e-9 ? 0 : Math.abs(Math.sin(rad));
+  const scale = getPlaneScale();
+  const horizontalWidthFactor = cosA;
+  const horizontalHeightFactor = sinA * (scale.y / scale.x);
+  const verticalWidthFactor = sinA * (scale.x / scale.y);
+  const verticalHeightFactor = cosA;
   const width = asNumber(candidate.width);
   const height = asNumber(candidate.height);
-  const spanWidth = cosA * width + sinA * height;
-  const spanHeight = sinA * width + cosA * height;
+  const handleEdges = handle ? HANDLE_EDGES[handle] : null;
+  const anchorRight = asNumber(candidate.left) + width;
+  const anchorBottom = asNumber(candidate.top) + height;
+  const withAnchoredSize = (nextWidth: number, nextHeight: number): ExtendsMovableBox => ({
+    ...candidate,
+    left: handleEdges?.left ? roundValue(anchorRight - nextWidth) : candidate.left,
+    top: handleEdges?.top ? roundValue(anchorBottom - nextHeight) : candidate.top,
+    width: nextWidth,
+    height: nextHeight
+  });
+  const withContinuousAnchoredSize = (
+    nextWidth: number,
+    nextHeight: number
+  ): ExtendsMovableBox => ({
+    ...candidate,
+    left: handleEdges?.left ? anchorRight - nextWidth : candidate.left,
+    top: handleEdges?.top ? anchorBottom - nextHeight : candidate.top,
+    width: nextWidth,
+    height: nextHeight
+  });
+  const spanWidth = horizontalWidthFactor * width + horizontalHeightFactor * height;
+  const spanHeight = verticalWidthFactor * width + verticalHeightFactor * height;
   const minWidth = Math.max(0, valIsNaN(props.minWidth, 0));
   const minHeight = Math.max(0, valIsNaN(props.minHeight, 0));
-  const affectsWidth = handle === null || handle.includes('l') || handle.includes('r');
-  const affectsHeight = handle === null || handle.includes('t') || handle.includes('b');
+  const affectsWidth = handle === null || Boolean(handleEdges?.left || handleEdges?.right);
+  const affectsHeight = handle === null || Boolean(handleEdges?.top || handleEdges?.bottom);
+  const anchorsRight = handleEdges?.left ?? false;
+  const anchorsBottom = handleEdges?.top ?? false;
+
+  // A left/top handle must keep its opposite local edge fixed. Span fitting alone only
+  // proves that the AABB can fit somewhere; a later positional clamp could otherwise
+  // translate the rectangle and move that fixed edge. Because supported transform origins
+  // are linear in width/height, every relevant AABB edge is linear along this shrink path.
+  const fitAtAnchoredEdges = (fitted: ExtendsMovableBox, uniform: boolean) => {
+    if (!anchorsRight && !anchorsBottom) return fitted;
+    const fittedWidth = asNumber(fitted.width);
+    const fittedHeight = asNumber(fitted.height);
+    const floorFactor = uniform
+      ? Math.min(
+          1,
+          Math.max(
+            fittedWidth > 0 ? minWidth / fittedWidth : 0,
+            fittedHeight > 0 ? minHeight / fittedHeight : 0
+          )
+        )
+      : 0;
+    const startWidth = uniform
+      ? fittedWidth * floorFactor
+      : anchorsRight
+        ? Math.min(fittedWidth, minWidth)
+        : fittedWidth;
+    const startHeight = uniform
+      ? fittedHeight * floorFactor
+      : anchorsBottom
+        ? Math.min(fittedHeight, minHeight)
+        : fittedHeight;
+    const dimensionsAt = (progress: number) => ({
+      width: startWidth + (fittedWidth - startWidth) * progress,
+      height: startHeight + (fittedHeight - startHeight) * progress
+    });
+    const continuousRectAt = (progress: number) => {
+      const dimensions = dimensionsAt(progress);
+      return withContinuousAnchoredSize(dimensions.width, dimensions.height);
+    };
+    const quantizedRectAt = (progress: number) => {
+      const dimensions = dimensionsAt(progress);
+      const quantize = props.isKeepDecimals ? roundValue : Math.floor;
+      return withAnchoredSize(
+        Math.max(minWidth, quantize(dimensions.width)),
+        Math.max(minHeight, quantize(dimensions.height))
+      );
+    };
+    const fitsAnchors = (rect: ExtendsMovableBox) => {
+      const probe = geometryProbe(rect);
+      const epsilon = 1e-7;
+      return (
+        (!anchorsRight ||
+          (probe.left >= edges.minLeft - epsilon &&
+            probe.left + probe.width <= edges.maxRight + epsilon)) &&
+        (!anchorsBottom ||
+          (probe.top >= edges.minTop - epsilon &&
+            probe.top + probe.height <= edges.maxBottom + epsilon))
+      );
+    };
+    if (fitsAnchors(fitted)) return fitted;
+
+    const startProbe = geometryProbe(continuousRectAt(0));
+    const endProbe = geometryProbe(continuousRectAt(1));
+    let lower = 0;
+    let upper = 1;
+    let feasible = true;
+    const constrainMinimum = (start: number, end: number, bound: number) => {
+      const delta = end - start;
+      if (Math.abs(delta) < 1e-9) {
+        if (start < bound) feasible = false;
+        return;
+      }
+      const threshold = (bound - start) / delta;
+      if (delta > 0) lower = Math.max(lower, threshold);
+      else upper = Math.min(upper, threshold);
+    };
+    const constrainMaximum = (start: number, end: number, bound: number) => {
+      const delta = end - start;
+      if (Math.abs(delta) < 1e-9) {
+        if (start > bound) feasible = false;
+        return;
+      }
+      const threshold = (bound - start) / delta;
+      if (delta > 0) upper = Math.min(upper, threshold);
+      else lower = Math.max(lower, threshold);
+    };
+    if (anchorsRight) {
+      constrainMinimum(startProbe.left, endProbe.left, edges.minLeft);
+      constrainMaximum(
+        startProbe.left + startProbe.width,
+        endProbe.left + endProbe.width,
+        edges.maxRight
+      );
+    }
+    if (anchorsBottom) {
+      constrainMinimum(startProbe.top, endProbe.top, edges.minTop);
+      constrainMaximum(
+        startProbe.top + startProbe.height,
+        endProbe.top + endProbe.height,
+        edges.maxBottom
+      );
+    }
+    lower = Math.max(0, lower);
+    upper = Math.min(1, upper);
+    if (!feasible || lower > upper) return quantizedRectAt(0);
+
+    const result = quantizedRectAt(upper);
+    if (fitsAnchors(result)) return result;
+    // Quantization can round a boundary value back outside by one unit. Retreat along
+    // the same anchored path until the largest representable fitting value is found.
+    let fittingProgress = lower;
+    let overflowingProgress = upper;
+    if (!fitsAnchors(quantizedRectAt(fittingProgress))) return quantizedRectAt(0);
+    for (let index = 0; index < 32; index += 1) {
+      const middle = (fittingProgress + overflowingProgress) / 2;
+      if (fitsAnchors(quantizedRectAt(middle))) fittingProgress = middle;
+      else overflowingProgress = middle;
+    }
+    return quantizedRectAt(fittingProgress);
+  };
 
   if (props.ratioLock || (affectsWidth && affectsHeight)) {
     const factor = Math.min(
@@ -454,14 +715,16 @@ const fitRotatedSizeToArea = (
       height > 0 ? minHeight / height : 0
     );
     const fitted = Math.min(lifted, 1);
-    if (fitted >= 1) return candidate;
+    if (fitted >= 1) return fitAtAnchoredEdges(candidate, true);
     // Re-clamp after flooring: float round-off or fractional floors could otherwise
     // land a pixel below minWidth/minHeight.
-    return {
-      ...candidate,
-      width: Math.max(minWidth, Math.floor(width * fitted)),
-      height: Math.max(minHeight, Math.floor(height * fitted))
-    };
+    return fitAtAnchoredEdges(
+      withAnchoredSize(
+        Math.max(minWidth, Math.floor(width * fitted)),
+        Math.max(minHeight, Math.floor(height * fitted))
+      ),
+      true
+    );
   }
 
   // Solve each span constraint for the dragged dimension; a span without a width (or
@@ -469,20 +732,30 @@ const fitRotatedSizeToArea = (
   // so rounding cannot leave a sub-pixel overflow behind.
   const widthLimit = Math.floor(
     Math.min(
-      cosA > 0 ? (areaWidth - sinA * height) / cosA : Infinity,
-      sinA > 0 ? (areaHeight - cosA * height) / sinA : Infinity
+      horizontalWidthFactor > 0
+        ? (areaWidth - horizontalHeightFactor * height) / horizontalWidthFactor
+        : Infinity,
+      verticalWidthFactor > 0
+        ? (areaHeight - verticalHeightFactor * height) / verticalWidthFactor
+        : Infinity
     )
   );
   const heightLimit = Math.floor(
     Math.min(
-      sinA > 0 ? (areaWidth - cosA * width) / sinA : Infinity,
-      cosA > 0 ? (areaHeight - sinA * width) / cosA : Infinity
+      horizontalHeightFactor > 0
+        ? (areaWidth - horizontalWidthFactor * width) / horizontalHeightFactor
+        : Infinity,
+      verticalHeightFactor > 0
+        ? (areaHeight - verticalWidthFactor * width) / verticalHeightFactor
+        : Infinity
     )
   );
   const nextWidth = affectsWidth ? Math.max(minWidth, Math.min(width, widthLimit)) : width;
   const nextHeight = affectsHeight ? Math.max(minHeight, Math.min(height, heightLimit)) : height;
-  if (nextWidth === width && nextHeight === height) return candidate;
-  return { ...candidate, width: nextWidth, height: nextHeight };
+  if (nextWidth === width && nextHeight === height) {
+    return fitAtAnchoredEdges(candidate, false);
+  }
+  return fitAtAnchoredEdges(withAnchoredSize(nextWidth, nextHeight), false);
 };
 
 const reportOutOfBounds = (rect: ExtendsMovableBox) => {
@@ -536,10 +809,13 @@ const memberApi: GroupMemberApi = {
 };
 onMounted(() => groupContext?.registerMember(memberIdentity, memberApi));
 
+const externalSnapTargets = () =>
+  groupContext
+    ? props.snapTargets.filter(target => !groupContext.hasMember(target.id))
+    : props.snapTargets;
+
 const roundValue = (value: number) =>
-  props.isKeepDecimals
-    ? keepDecimalsToNum(value, 0, props.decimalPlaces)
-    : Math.round(value);
+  props.isKeepDecimals ? keepDecimalsToNum(value, 0, props.decimalPlaces) : Math.round(value);
 const scaledDelta = (value: number, axis: 'horizontal' | 'vertical') => {
   const configuredScale = valIsNaN(props.scale, 1);
   const scaled = value / (configuredScale === 0 ? 1 : configuredScale);
@@ -641,7 +917,7 @@ const resolveCollision = (
   const result = collision.resolveCandidate(
     candidateProbe,
     geometryProbe(previous),
-    props.snapTargets,
+    externalSnapTargets(),
     rect => ({
       left: roundValue(rect.left),
       top: roundValue(rect.top),
@@ -653,6 +929,24 @@ const resolveCollision = (
   publishCollision(result);
   if (!result.accepted) return null;
   if (rotationAngle.value) {
+    if (resolution === 'path' && result.progress !== undefined) {
+      const progress = clamp(result.progress, 0, 1);
+      const previousPlane = numericPlane(previous);
+      const candidatePlane = numericPlane(candidate);
+      return {
+        ...candidate,
+        left: roundValue(
+          previousPlane.left + (candidatePlane.left - previousPlane.left) * progress
+        ),
+        top: roundValue(previousPlane.top + (candidatePlane.top - previousPlane.top) * progress),
+        width: roundValue(
+          previousPlane.width + (candidatePlane.width - previousPlane.width) * progress
+        ),
+        height: roundValue(
+          previousPlane.height + (candidatePlane.height - previousPlane.height) * progress
+        )
+      };
+    }
     return {
       ...candidate,
       left: roundValue(asNumber(candidate.left) + (result.rect.left - candidateProbe.left)),
@@ -683,7 +977,7 @@ const applyInteractivePosition = (
 
   if (useElementSnap) {
     const probe = geometryProbe(next);
-    snapResult = snap.resolveSnap(probe, props.snapTargets, axes);
+    snapResult = snap.resolveSnap(probe, externalSnapTargets(), axes);
     if (rotationAngle.value) {
       next = {
         ...next,
@@ -731,8 +1025,9 @@ const applyInteractivePosition = (
   next = collisionResolved;
 
   if (snapResult.snapped) {
-    const horizontalChanged = asNumber(next.left) !== snapResult.left;
-    const verticalChanged = asNumber(next.top) !== snapResult.top;
+    const resolvedProbe = geometryProbe(next);
+    const horizontalChanged = roundValue(resolvedProbe.left) !== roundValue(snapResult.left);
+    const verticalChanged = roundValue(resolvedProbe.top) !== roundValue(snapResult.top);
     const points = snapResult.points.filter(point => {
       if (horizontalSnapPoints.has(point)) return !horizontalChanged;
       if (verticalSnapPoints.has(point)) return !verticalChanged;
@@ -784,6 +1079,7 @@ const resizeFromHandle = (
   deltaX: number,
   deltaY: number
 ): ExtendsMovableBox => {
+  const handleEdges = HANDLE_EDGES[handle];
   const startLeft = asNumber(start.left);
   const startTop = asNumber(start.top);
   const startWidth = asNumber(start.width);
@@ -793,10 +1089,10 @@ const resizeFromHandle = (
   let top = startTop;
   let bottom = startTop + startHeight;
 
-  if (handle.includes('l')) left += deltaX;
-  if (handle.includes('r')) right += deltaX;
-  if (handle.includes('t')) top += deltaY;
-  if (handle.includes('b')) bottom += deltaY;
+  if (handleEdges.left) left += deltaX;
+  if (handleEdges.right) right += deltaX;
+  if (handleEdges.top) top += deltaY;
+  if (handleEdges.bottom) bottom += deltaY;
 
   const horizontalCenter = (left + right) / 2;
   const verticalCenter = (top + bottom) / 2;
@@ -806,8 +1102,8 @@ const resizeFromHandle = (
 
   const setWidth = (value: number) => {
     width = value;
-    if (handle.includes('l')) left = right - width;
-    else if (handle.includes('r')) right = left + width;
+    if (handleEdges.left) left = right - width;
+    else if (handleEdges.right) right = left + width;
     else {
       left = horizontalCenter - width / 2;
       right = horizontalCenter + width / 2;
@@ -815,8 +1111,8 @@ const resizeFromHandle = (
   };
   const setHeight = (value: number) => {
     height = value;
-    if (handle.includes('t')) top = bottom - height;
-    else if (handle.includes('b')) bottom = top + height;
+    if (handleEdges.top) top = bottom - height;
+    else if (handleEdges.bottom) bottom = top + height;
     else {
       top = verticalCenter - height / 2;
       bottom = verticalCenter + height / 2;
@@ -831,12 +1127,15 @@ const resizeFromHandle = (
   }
 
   const edges = getAreaEdges();
-  const constrainToArea = props.limitAreaForParent && Boolean(state.parentElement);
+  // Rotated rectangles are constrained later through their visual AABB. Applying local
+  // left/right/top/bottom limits here would reject sizes that still fit after rotation.
+  const constrainToArea =
+    props.limitAreaForParent && Boolean(state.parentElement) && rotationAngle.value === 0;
   const availableWidth = !constrainToArea
     ? Infinity
-    : handle.includes('l')
+    : handleEdges.left
       ? Math.max(0, right - edges.minLeft)
-      : handle.includes('r')
+      : handleEdges.right
         ? Math.max(0, edges.maxRight - left)
         : Math.max(
             0,
@@ -844,9 +1143,9 @@ const resizeFromHandle = (
           );
   const availableHeight = !constrainToArea
     ? Infinity
-    : handle.includes('t')
+    : handleEdges.top
       ? Math.max(0, bottom - edges.minTop)
-      : handle.includes('b')
+      : handleEdges.bottom
         ? Math.max(0, edges.maxBottom - top)
         : Math.max(
             0,
@@ -881,8 +1180,28 @@ const resizeFromHandle = (
 let rafId: number | null = null;
 let pendingEvent: PointerEvent | null = null;
 
+const pointerAngleFromOrigin = (source: PointerEvent, originX: number, originY: number) =>
+  (Math.atan2(source.clientY - originY, source.clientX - originX) * 180) / Math.PI + 90;
+
 const processInteraction = (source: PointerEvent) => {
-  if (props.disabled || props.initRect || (!state.isDragging && !state.isResizing)) return;
+  if (
+    props.disabled ||
+    props.initRect ||
+    !state.isInteracting
+  )
+    return;
+
+  if (state.isRotating) {
+    const pointerAngle = pointerAngleFromOrigin(
+      source,
+      state.rotationOriginX,
+      state.rotationOriginY
+    );
+    const delta = normalizeAngle(pointerAngle - state.rotationStartPointerAngle);
+    commitRotation(state.beforeRotation + delta);
+    return;
+  }
+
   const deltaX = scaledDelta(source.clientX - state.initX, 'horizontal');
   const deltaY = scaledDelta(source.clientY - state.initY, 'vertical');
   const previous = cloneRect(internalRect.value);
@@ -936,8 +1255,8 @@ const processInteraction = (source: PointerEvent) => {
       localDelta.x,
       localDelta.y
     );
-    // resizeFromHandle constrains sizes against local edges; rotated boxes additionally
-    // fit their AABB into the area and get it clamped into position.
+    // Unrotated boxes are constrained against local edges in resizeFromHandle. Rotated
+    // boxes instead fit their AABB into the area and then clamp that visual box.
     if (rotationAngle.value) {
       candidate = fitRotatedSizeToArea(candidate, state.handle);
       candidate = clampPosition(candidate);
@@ -980,7 +1299,14 @@ const handlePointerCancel = (source: PointerEvent) => {
 };
 const handleLostPointerCapture = (source: PointerEvent) => {
   if (!isOwnedPointer(source)) return;
-  if (state.isDragging || state.isResizing) cancelInteraction(source);
+  if (state.isInteracting) cancelInteraction(source);
+};
+const handleInteractionKeyDown = (source: KeyboardEvent) => {
+  if (source.key !== 'Escape') return;
+  if (!state.isInteracting) return;
+  source.preventDefault();
+  source.stopPropagation();
+  cancelInteraction(source);
 };
 
 const addInteractionListeners = () => {
@@ -990,6 +1316,7 @@ const addInteractionListeners = () => {
   addEvent(element, 'pointermove', handlePointerMove, options);
   addEvent(element, 'pointerup', handlePointerUp, options);
   addEvent(element, 'pointercancel', handlePointerCancel, options);
+  addEvent(element, 'keydown', handleInteractionKeyDown, true);
   const captureTarget = movableRef.value;
   if (captureTarget) {
     addEvent(captureTarget, 'lostpointercapture', handleLostPointerCapture, options);
@@ -1002,6 +1329,7 @@ const removeInteractionListeners = () => {
   removeEvent(element, 'pointermove', handlePointerMove, false);
   removeEvent(element, 'pointerup', handlePointerUp, false);
   removeEvent(element, 'pointercancel', handlePointerCancel, false);
+  removeEvent(element, 'keydown', handleInteractionKeyDown, true);
   const captureTarget = movableRef.value;
   if (captureTarget) {
     removeEvent(captureTarget, 'lostpointercapture', handleLostPointerCapture, false);
@@ -1040,8 +1368,7 @@ function dropPendingFrame() {
 }
 
 function closeInteraction() {
-  state.isDragging = false;
-  state.isResizing = false;
+  state.interactionMode = 'idle';
   state.handle = null;
   groupDragLeader = false;
   removeInteractionListeners();
@@ -1068,6 +1395,7 @@ function abortInteraction() {
 function cancelInteraction(source: Event | null = null) {
   const wasDragging = state.isDragging;
   const wasResizing = state.isResizing;
+  const wasRotating = state.isRotating;
   const wasGroupDrag = groupDragLeader;
   dropPendingFrame();
   closeInteraction();
@@ -1077,6 +1405,11 @@ function cancelInteraction(source: Event | null = null) {
     if (wasDragging) emit('drag-cancel', source, oldValue, cloneRect(oldValue));
     else emit('resize-cancel', source, oldValue, cloneRect(oldValue));
     if (wasDragging && wasGroupDrag) groupContext?.cancelDrag(memberIdentity, source);
+  }
+  if (wasRotating) {
+    internalRotation.value = state.beforeRotation;
+    emit('update:rotate', state.beforeRotation);
+    emit('rotate-cancel', source, state.beforeRotation, state.beforeRotation);
   }
   finalizeInteraction();
 }
@@ -1088,7 +1421,7 @@ function deactivateComponent() {
 
 const startInteraction = (source: PointerEvent, handle: HandlePosition | null) => {
   if (props.disabled || props.initRect) return;
-  if (state.isDragging || state.isResizing) return;
+  if (state.isInteracting) return;
   if (handle && (!isResizable.value || !isHandleAllowed(handle))) return;
   if (!handle && !props.draggable) return;
 
@@ -1099,8 +1432,12 @@ const startInteraction = (source: PointerEvent, handle: HandlePosition | null) =
     return;
   }
 
-  groupDragLeader = !handle && groupContext !== null;
-  if (groupDragLeader) groupContext?.beginDrag(memberIdentity, source);
+  groupDragLeader = false;
+  if (!handle && groupContext) {
+    const disposition = groupContext.beginDrag(memberIdentity, source);
+    if (disposition === 'blocked') return;
+    groupDragLeader = disposition === 'group';
+  }
 
   refreshArea();
   state.pointerId = typeof source.pointerId === 'number' ? source.pointerId : null;
@@ -1108,12 +1445,70 @@ const startInteraction = (source: PointerEvent, handle: HandlePosition | null) =
   state.initY = source.clientY;
   state.beforeInteraction = cloneRect(internalRect.value);
   state.handle = handle;
-  state.isDragging = !handle;
-  state.isResizing = Boolean(handle);
+  state.interactionMode = handle ? 'resize' : 'drag';
   setActive(true);
 
   if (state.isDragging) emit('drag-start', source, cloneRect(state.beforeInteraction));
   if (state.isResizing) emit('resize-start', source, cloneRect(state.beforeInteraction));
+  state.eventElement = document.documentElement;
+  addInteractionListeners();
+  capturePointer();
+};
+
+const rotationOriginInViewport = () => {
+  const element = movableRef.value;
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  const width = element.offsetWidth || asNumber(internalRect.value.width);
+  const height = element.offsetHeight || asNumber(internalRect.value.height);
+  if (!width || !height) return null;
+
+  const radians = angleToRadians(rotationAngle.value);
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const aabbWidth = Math.abs(cosine) * width + Math.abs(sine) * height;
+  const aabbHeight = Math.abs(sine) * width + Math.abs(cosine) * height;
+  const measuredScales = [
+    aabbWidth ? rect.width / aabbWidth : 0,
+    aabbHeight ? rect.height / aabbHeight : 0
+  ].filter(value => Number.isFinite(value) && value > 0);
+  const fallbackScale = Math.abs(valIsNaN(props.scale, 1)) || 1;
+  const scale = measuredScales.length
+    ? measuredScales.reduce((sum, value) => sum + value, 0) / measuredScales.length
+    : fallbackScale;
+  const origin = resolveTransformOrigin(props.transformOrigin, width, height);
+  const originX = origin.x * scale;
+  const originY = origin.y * scale;
+  const corners = [
+    [-originX, -originY],
+    [width * scale - originX, -originY],
+    [width * scale - originX, height * scale - originY],
+    [-originX, height * scale - originY]
+  ].map(([x, y]) => ({
+    x: x * cosine - y * sine,
+    y: x * sine + y * cosine
+  }));
+  return {
+    x: rect.left - Math.min(...corners.map(point => point.x)),
+    y: rect.top - Math.min(...corners.map(point => point.y))
+  };
+};
+
+const handleRotationPointerDown = (source: PointerEvent) => {
+  if (!source.isPrimary || source.button !== 0) return;
+  if (props.disabled || props.initRect || !props.rotatable) return;
+  if (state.isInteracting) return;
+  const origin = rotationOriginInViewport();
+  if (!origin) return;
+
+  state.pointerId = typeof source.pointerId === 'number' ? source.pointerId : null;
+  state.beforeRotation = internalRotation.value;
+  state.rotationOriginX = origin.x;
+  state.rotationOriginY = origin.y;
+  state.rotationStartPointerAngle = pointerAngleFromOrigin(source, origin.x, origin.y);
+  state.interactionMode = 'rotate';
+  setActive(true);
+  emit('rotate-start', source, state.beforeRotation);
   state.eventElement = document.documentElement;
   addInteractionListeners();
   capturePointer();
@@ -1168,6 +1563,9 @@ function endInteraction(source: PointerEvent) {
   if (state.isResizing) {
     emit('resize-stop', source, cloneRect(state.beforeInteraction), cloneRect(internalRect.value));
   }
+  if (state.isRotating) {
+    emit('rotate-stop', source, state.beforeRotation, internalRotation.value);
+  }
 
   teardownInteraction();
 }
@@ -1181,21 +1579,23 @@ const moveWithKeyboard = (direction: DragDirection, distance: number) => {
   if (direction === 'right') candidate.left = asNumber(candidate.left) + distance;
   if (direction === 'top') candidate.top = asNumber(candidate.top) - distance;
   if (direction === 'bottom') candidate.top = asNumber(candidate.top) + distance;
-  const accepted = applyInteractivePosition(candidate, previous, props.snapToElements, {
-    horizontal: direction === 'left' || direction === 'right',
-    vertical: direction === 'top' || direction === 'bottom'
-  }, previous);
+  const accepted = applyInteractivePosition(
+    candidate,
+    previous,
+    props.snapToElements,
+    {
+      horizontal: direction === 'left' || direction === 'right',
+      vertical: direction === 'top' || direction === 'bottom'
+    },
+    previous
+  );
   if (accepted) {
     const value = commitRect(accepted);
     emit('move', cloneRect(value));
   }
 };
 
-const resizeWithKeyboard = (
-  handle: HandlePosition,
-  direction: DragDirection,
-  distance: number
-) => {
+const resizeWithKeyboard = (handle: HandlePosition, direction: DragDirection, distance: number) => {
   if (!isResizable.value || !isHandleAllowed(handle)) return;
   refreshArea();
   const previous = cloneRect(internalRect.value);
@@ -1239,9 +1639,7 @@ const handleOrientation = (handle: HandlePosition) => {
 const handleUsesWidth = (handle: HandlePosition) => handle === 'ml' || handle === 'mr';
 const handleValue = (handle: HandlePosition) => {
   if (isCornerHandle(handle)) return undefined;
-  return asNumber(
-    handleUsesWidth(handle) ? internalRect.value.width : internalRect.value.height
-  );
+  return asNumber(handleUsesWidth(handle) ? internalRect.value.width : internalRect.value.height);
 };
 const handleMinimum = (handle: HandlePosition) => {
   if (isCornerHandle(handle)) return undefined;
@@ -1294,6 +1692,8 @@ const isKeyboardEventFromInteractiveContent = (event: KeyboardEvent) => {
   const root = movableRef.value;
   if (!(target instanceof Element) || !root || target === root) return false;
   if (target.closest('.handle')) return false;
+  // Rotation owns its angle keys, but Escape must bubble into the shared cancellation path.
+  if (target.closest('.rotation-handle')) return event.key !== 'Escape';
   const interactive = target.closest(INTERACTIVE_CONTENT_SELECTOR);
   return interactive !== null && interactive !== root && root.contains(interactive);
 };
@@ -1308,7 +1708,7 @@ const keyboard = useKeyboard(
     dragDirections: props.dragDirections,
     resizeDirections: props.resizeDirections,
     focusedHandle: focusedHandle.value,
-    interacting: state.isDragging || state.isResizing
+    interacting: state.isInteracting
   }),
   {
     move: moveWithKeyboard,
@@ -1320,6 +1720,20 @@ const keyboard = useKeyboard(
 const handleKeyDown = (event: KeyboardEvent) => {
   if (isKeyboardEventFromInteractiveContent(event)) return;
   keyboard.handleKeyDown(event);
+};
+
+const handleRotationKeyDown = (event: KeyboardEvent) => {
+  if (!props.keyboardEnabled || props.disabled || props.initRect || !props.rotatable) return;
+  if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const oldValue = internalRotation.value;
+  const step = normalizeKeyboardStep(props.keyboardStep) * (event.shiftKey ? 10 : 1);
+  const next =
+    event.key === 'Home' ? 0 : oldValue + (event.key === 'ArrowLeft' ? -step : step);
+  emit('rotate-start', event, oldValue);
+  const value = commitRotation(next);
+  emit('rotate-stop', event, oldValue, value);
 };
 
 const toPixelX = (value: number) => (isPercent.value ? (value / 100) * state.parentWidth : value);
@@ -1364,7 +1778,10 @@ onUnmounted(() => {
   border: 1px solid;
   outline: none;
   user-select: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .auto-draggable :deep(img),
@@ -1382,7 +1799,11 @@ onUnmounted(() => {
 }
 
 .auto-draggable.is-disabled .handle,
-.auto-draggable.is-readonly .handle {
+.auto-draggable.is-readonly .handle,
+.auto-draggable.is-disabled .rotation-handle,
+.auto-draggable.is-disabled .rotation-handle-connector,
+.auto-draggable.is-readonly .rotation-handle,
+.auto-draggable.is-readonly .rotation-handle-connector {
   display: none !important;
 }
 
@@ -1391,15 +1812,21 @@ onUnmounted(() => {
 }
 
 .auto-draggable:focus-visible,
-.handle:focus-visible {
+.handle:focus-visible,
+.rotation-handle:focus-visible {
   outline: 2px solid var(--movable-box-theme, #409efd);
   outline-offset: 1px;
 }
 
 .auto-draggable.is-dragging,
-.auto-draggable.is-resizing {
+.auto-draggable.is-resizing,
+.auto-draggable.is-rotating {
   opacity: 0.95;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.auto-draggable.is-rotating {
+  cursor: grabbing !important;
 }
 
 .auto-draggable.is-dragging {
@@ -1433,7 +1860,9 @@ onUnmounted(() => {
   border: 2px solid;
   border-radius: 50%;
   z-index: 9999;
-  transition: transform 0.15s ease, background-color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -1442,19 +1871,124 @@ onUnmounted(() => {
   background-color: #f0f9ff;
 }
 
-.handle-tl { top: -5px; left: -5px; cursor: nw-resize; }
-.handle-tm { top: -5px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
-.handle-tr { top: -5px; right: -5px; cursor: ne-resize; }
-.handle-ml { top: 50%; left: -5px; transform: translateY(-50%); cursor: w-resize; }
-.handle-mr { top: 50%; right: -5px; transform: translateY(-50%); cursor: e-resize; }
-.handle-bl { bottom: -5px; left: -5px; cursor: sw-resize; }
-.handle-bm { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
-.handle-br { bottom: -5px; right: -5px; cursor: se-resize; }
+.rotation-handle-connector {
+  position: absolute;
+  z-index: 9998;
+  top: calc(-1 * var(--rotation-handle-offset));
+  left: 50%;
+  width: 0;
+  height: var(--rotation-handle-offset);
+  border-left: 1px solid;
+  pointer-events: none !important;
+}
+
+.rotation-handle {
+  position: absolute;
+  z-index: 9999;
+  top: calc(-1 * var(--rotation-handle-offset));
+  left: 50%;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: inherit;
+  background: #fff;
+  border: 2px solid;
+  border-radius: 50%;
+  cursor: grab;
+  scale: var(--rotation-handle-scale);
+  translate: -50% -50%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.18);
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.rotation-handle:hover {
+  background: #f0f9ff;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.22);
+}
+
+.rotation-handle:active {
+  cursor: grabbing;
+}
+
+.rotation-handle-mark {
+  position: absolute;
+  inset: 3px;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-left-color: transparent;
+  border-radius: 50%;
+  pointer-events: none !important;
+}
+
+.rotation-handle-mark::after {
+  position: absolute;
+  top: -2px;
+  left: -1px;
+  width: 0;
+  height: 0;
+  border-top: 2.5px solid transparent;
+  border-right: 4px solid currentColor;
+  border-bottom: 2.5px solid transparent;
+  content: '';
+  rotate: -18deg;
+}
+
+.handle-tl {
+  top: -5px;
+  left: -5px;
+  cursor: nw-resize;
+}
+.handle-tm {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: n-resize;
+}
+.handle-tr {
+  top: -5px;
+  right: -5px;
+  cursor: ne-resize;
+}
+.handle-ml {
+  top: 50%;
+  left: -5px;
+  transform: translateY(-50%);
+  cursor: w-resize;
+}
+.handle-mr {
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+  cursor: e-resize;
+}
+.handle-bl {
+  bottom: -5px;
+  left: -5px;
+  cursor: sw-resize;
+}
+.handle-bm {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: s-resize;
+}
+.handle-br {
+  bottom: -5px;
+  right: -5px;
+  cursor: se-resize;
+}
 
 .handle-tm:hover,
-.handle-bm:hover { transform: translateX(-50%) scale(1.2); }
+.handle-bm:hover {
+  transform: translateX(-50%) scale(1.2);
+}
 .handle-ml:hover,
-.handle-mr:hover { transform: translateY(-50%) scale(1.2); }
+.handle-mr:hover {
+  transform: translateY(-50%) scale(1.2);
+}
 
 .select-none {
   user-select: none;

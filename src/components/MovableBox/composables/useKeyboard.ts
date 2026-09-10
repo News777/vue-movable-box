@@ -44,6 +44,9 @@ const oppositeDirection: Record<DragDirection, DragDirection> = {
   right: 'left'
 };
 
+export const normalizeKeyboardStep = (step: number): number =>
+  Number.isFinite(step) && step > 0 ? step : 1;
+
 export function useKeyboard(getOptions: () => UseKeyboardOptions, callbacks: UseKeyboardCallbacks) {
   const handleKeyDown = (event: KeyboardEvent) => {
     const options = getOptions();
@@ -62,7 +65,7 @@ export function useKeyboard(getOptions: () => UseKeyboardOptions, callbacks: Use
     const direction = keyMap[event.key];
     if (!direction) return;
 
-    const step = Number.isFinite(options.step) && options.step > 0 ? options.step : 1;
+    const step = normalizeKeyboardStep(options.step);
 
     if (options.focusedHandle && options.resizeDirections.includes(options.focusedHandle)) {
       if (!handleAxes[options.focusedHandle].includes(direction)) return;

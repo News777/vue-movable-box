@@ -2,6 +2,7 @@ import { nextTick } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import MovableBox from './MovableBox.vue';
+import { resolveTransformOrigin, rotatedAABBAt } from './utils/rotation';
 
 const flushFrame = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -34,11 +35,7 @@ const mountBox = (overrides: Record<string, unknown> = {}, slots: Record<string,
 };
 
 type TestPointerEventType =
-  | 'pointerdown'
-  | 'pointermove'
-  | 'pointerup'
-  | 'pointercancel'
-  | 'lostpointercapture';
+  'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel' | 'lostpointercapture';
 
 const pointerEvent = (
   type: TestPointerEventType,
@@ -188,10 +185,7 @@ describe('MovableBox', () => {
       unitType: '%'
     });
     await pointerDrag(dragging, [0, 0], [50, 40]);
-    const dragUpdate = dragging.emitted('update:modelValue')?.at(-1)?.[0] as Record<
-      string,
-      number
-    >;
+    const dragUpdate = dragging.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
     expect(dragUpdate).toMatchObject({ left: 20, top: 30 });
 
     const resizing = mountBox({
@@ -281,7 +275,12 @@ describe('MovableBox', () => {
     expect(wrapper.emitted('snap')?.at(-1)?.[0]).toMatchObject({
       snapped: true,
       spacing: [
-        { axis: 'horizontal', gap: 75, targetIds: ['left-anchor', 'right-anchor'], guides: [50, 250] }
+        {
+          axis: 'horizontal',
+          gap: 75,
+          targetIds: ['left-anchor', 'right-anchor'],
+          guides: [50, 250]
+        }
       ]
     });
     expect(wrapper.findAll('.movable-box-guide--vertical')).toHaveLength(2);
@@ -317,6 +316,47 @@ describe('MovableBox', () => {
 
     await wrapper.setProps({ rotate: 'bad' });
     expect(wrapper.get('.auto-draggable').attributes('style')).not.toContain('rotate');
+  });
+
+  it('uses the same fallback transform origin for CSS and geometry', async () => {
+    const wrapper = mountBox({ rotate: 45, transformOrigin: 'calc(10px + 5%)' });
+
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain(
+      'transform-origin: center'
+    );
+  });
+
+  it('falls back to center for invalid transform-origin token pairs', () => {
+    const wrapper = mountBox({ rotate: 45, transformOrigin: 'left right' });
+
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain(
+      'transform-origin: center'
+    );
+  });
+
+  it('falls back to center instead of truncating extra transform-origin tokens', () => {
+    const wrapper = mountBox({ rotate: 45, transformOrigin: 'left top 5px' });
+
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain(
+      'transform-origin: center'
+    );
+  });
+
+  it('converts px transform origins before probing percentage geometry', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 90, top: 0, width: 20, height: 20 }),
+      unitType: '%',
+      rotate: 90,
+      transformOrigin: '10px 20px',
+      limitAreaForParent: true
+    });
+    await pointerDrag(wrapper, [0, 0], [1000, 0]);
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.left).toBe(94);
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain(
+      'transform-origin: 10px 20px'
+    );
   });
 
   it('clamps rotated boxes by their axis-aligned bounding box', async () => {
@@ -373,6 +413,23 @@ describe('MovableBox', () => {
     // Width grew to 400; the AABB (100 wide, 400 tall at left 50) clamps to top 0,
     // shifting the local rect from 0 to 150.
     expect(update).toMatchObject({ width: 400, top: 150, height: 100 });
+  });
+
+  it('does not cap rotated resize by the unrotated right edge', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 300, top: 150, width: 100, height: 100 }),
+      rotate: 90,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-mr');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 0, 200));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 200));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ left: 300, top: 150, width: 300, height: 100 });
   });
 
   it('scales the rotated rectangle down when its AABB exceeds the area itself', async () => {
@@ -436,6 +493,83 @@ describe('MovableBox', () => {
 
     const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
     expect(update).toMatchObject({ width: 288, height: 300 });
+  });
+
+  it('keeps the opposite edge fixed when fitting a rotated left-edge resize', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 100, top: 50, width: 300, height: 300 }),
+      rotate: 60,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-ml');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', -200, 0));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', -200, 0));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ left: 112, width: 288, height: 300 });
+    expect(update.left + update.width).toBe(400);
+  });
+
+  it('shrinks at the anchor instead of moving the fixed edge during AABB clamping', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 200, top: 150, width: 100, height: 100 }),
+      rotate: 45,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-ml');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', -354, -354));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', -354, -354));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    const probe = rotatedAABBAt(
+      update as { left: number; top: number; width: number; height: number },
+      45,
+      resolveTransformOrigin('center', update.width, update.height)
+    );
+    expect(update.left + update.width).toBe(300);
+    expect(probe.left).toBeGreaterThanOrEqual(0);
+  });
+
+  it('keeps the opposite edge fixed when fitting a rotated top-edge resize', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 100, top: 40, width: 300, height: 300 }),
+      rotate: 60,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-tm');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 0, -200));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, -200));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update).toMatchObject({ top: 60, width: 300, height: 280 });
+    expect(update.top + update.height).toBe(340);
+  });
+
+  it('keeps both opposite edges fixed when fitting a rotated top-left resize', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 100, top: 46, width: 300, height: 300 }),
+      rotate: 60,
+      limitAreaForParent: true
+    });
+    const handle = wrapper.get('.handle-tl');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 73, -273));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 73, -273));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.left + update.width).toBe(400);
+    expect(update.top + update.height).toBe(346);
   });
 
   it('never collapses a corner-handle resize that exceeds the area', async () => {
@@ -509,7 +643,44 @@ describe('MovableBox', () => {
     // AABB of the rotated box is 50 wide starting at left 45; snapping its left edge
     // to the target's left (60) shifts the local rect by +15 to 35.
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ left: 35 });
+    expect(wrapper.emitted('snap')?.at(-1)?.[0]).toMatchObject({
+      snapped: true,
+      targetId: 'edge'
+    });
+    expect(wrapper.emitted('guides')?.at(-1)?.[0]).toMatchObject({ vertical: [60] });
     document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+  });
+
+  it('keeps a rotated resize outside collision targets', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 100, height: 100 }),
+      rotate: 45,
+      collisionEnabled: true,
+      snapTargets: [{ id: 'wall', left: 160, top: -200, width: 100, height: 500 }]
+    });
+    const handle = wrapper.get('.handle-mr');
+    await handle.trigger('pointerdown', { clientX: 0, clientY: 0, pointerId: 1 });
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 100, 100));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 100, 100));
+    await nextTick();
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    const origin = resolveTransformOrigin('center', update.width, update.height);
+    const probe = rotatedAABBAt(
+      {
+        left: update.left,
+        top: update.top,
+        width: update.width,
+        height: update.height
+      },
+      45,
+      origin
+    );
+    expect(probe.left + probe.width).toBeLessThanOrEqual(161);
+    expect(wrapper.emitted('collision')).toContainEqual([
+      expect.objectContaining({ colliding: true, targetId: 'wall' })
+    ]);
   });
 
   it('emits snap again when the snapped coordinate changes', async () => {
@@ -520,18 +691,14 @@ describe('MovableBox', () => {
       snapTargets: [{ id: 'target', left: 10, top: 300, width: 20, height: 20 }]
     });
     await wrapper.get('.auto-draggable').trigger('pointerdown', { clientX: 0, clientY: 0 });
-    document.documentElement.dispatchEvent(
-      pointerEvent('pointermove', 1, 0)
-    );
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 1, 0));
     await flushFrame();
     expect(wrapper.emitted('snap')).toHaveLength(1);
 
     await wrapper.setProps({
       snapTargets: [{ id: 'target', left: 12, top: 300, width: 20, height: 20 }]
     });
-    document.documentElement.dispatchEvent(
-      pointerEvent('pointermove', 1, 0)
-    );
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 1, 0));
     await flushFrame();
 
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 12px');
@@ -555,9 +722,7 @@ describe('MovableBox', () => {
     await wrapper.setProps({
       snapTargets: [horizontalTarget, { ...verticalTarget, id: 'vertical-2' }]
     });
-    document.documentElement.dispatchEvent(
-      pointerEvent('pointermove', 2, 2)
-    );
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 2, 2));
     await flushFrame();
 
     expect(wrapper.emitted('snap')).toHaveLength(snapCount + 1);
@@ -575,13 +740,9 @@ describe('MovableBox', () => {
       snapTargets: [{ id: 'target', left: 60, top: 0, width: 50, height: 50 }]
     });
     await wrapper.get('.auto-draggable').trigger('pointerdown', { clientX: 0, clientY: 0 });
-    document.documentElement.dispatchEvent(
-      pointerEvent('pointermove', 4, 0)
-    );
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 4, 0));
     await flushFrame();
-    document.documentElement.dispatchEvent(
-      pointerEvent('pointermove', 6, 0)
-    );
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 6, 0));
     await flushFrame();
 
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 10px');
@@ -807,7 +968,7 @@ describe('MovableBox', () => {
     await wrapper.get('.auto-draggable').trigger('keydown', { key: 'ArrowRight' });
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 20px');
 
-    await wrapper.get('.auto-draggable').trigger('keydown', { key: 'Escape' });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'Escape' });
     expect(wrapper.emitted('inactive')).toBeTruthy();
   });
 
@@ -955,7 +1116,10 @@ describe('MovableBox', () => {
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 40px');
     expect(wrapper.emitted('drag-start')).toHaveLength(1);
 
-    await wrapper.get('.auto-draggable').trigger('keydown', { key: 'Escape' });
+    document.documentElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    );
+    await nextTick();
     await nextTick();
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 10px');
   });
@@ -979,9 +1143,7 @@ describe('MovableBox', () => {
     expect(topLeft.attributes('aria-roledescription')).toBe('two-axis resize handle');
     expect(topLeft.attributes('aria-orientation')).toBeUndefined();
     expect(topLeft.attributes('aria-valuenow')).toBeUndefined();
-    expect(topLeft.attributes('aria-keyshortcuts')).toBe(
-      'ArrowUp ArrowDown ArrowLeft ArrowRight'
-    );
+    expect(topLeft.attributes('aria-keyshortcuts')).toBe('ArrowUp ArrowDown ArrowLeft ArrowRight');
 
     const withoutKeyboard = mountBox({ active: true, handles: ['mr'] });
     expect(withoutKeyboard.get('.handle-mr').attributes('tabindex')).toBeUndefined();
@@ -1019,9 +1181,7 @@ describe('MovableBox', () => {
     const box = wrapper.get('.auto-draggable');
     box.element.dispatchEvent(pointerEvent('pointerdown', 10, 20, { pointerId: 1 }));
     box.element.dispatchEvent(pointerEvent('lostpointercapture', 10, 20, { pointerId: 2 }));
-    document.documentElement.dispatchEvent(
-      pointerEvent('pointermove', 40, 50, { pointerId: 1 })
-    );
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 40, 50, { pointerId: 1 }));
     await flushFrame();
 
     expect(wrapper.emitted('drag-cancel')).toBeFalsy();
@@ -1173,9 +1333,7 @@ describe('MovableBox', () => {
       const wrapper = mountBox();
       await wrapper.get('.auto-draggable').trigger('pointerdown', { clientX: 0, clientY: 0 });
       await wrapper.setProps({ [prop]: true });
-      document.documentElement.dispatchEvent(
-        pointerEvent('pointermove', 100, 100)
-      );
+      document.documentElement.dispatchEvent(pointerEvent('pointermove', 100, 100));
       await flushFrame();
 
       expect(wrapper.emitted('update:modelValue')).toBeFalsy();
@@ -1187,9 +1345,7 @@ describe('MovableBox', () => {
     const wrapper = mountBox({ active: true });
     await wrapper.get('.auto-draggable').trigger('pointerdown', { clientX: 0, clientY: 0 });
     await wrapper.setProps({ active: false });
-    document.documentElement.dispatchEvent(
-      pointerEvent('pointermove', 100, 100)
-    );
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 100, 100));
     await flushFrame();
 
     expect(wrapper.emitted('update:modelValue')).toBeFalsy();
@@ -1212,7 +1368,10 @@ describe('MovableBox', () => {
     await pointerDrag(wrapper, [0, 0], [30, 0], '.auto-draggable', false);
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 40px');
 
-    await wrapper.get('.auto-draggable').trigger('keydown', { key: 'Escape' });
+    document.documentElement.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    );
+    await nextTick();
     await nextTick();
     expect(wrapper.get('.auto-draggable').attributes('style')).toContain('left: 10px');
     expect(wrapper.emitted('drag-cancel')?.[0]?.[0]).toBeInstanceOf(KeyboardEvent);
@@ -1273,5 +1432,116 @@ describe('MovableBox', () => {
     await flushFrame();
 
     expect(wrapper.emitted('inactive')).toBeFalsy();
+  });
+
+  it('rotates from the interactive handle and emits the complete lifecycle', async () => {
+    const wrapper = mountBox({ active: true, rotatable: true, rotate: 0 });
+    const box = wrapper.get('.auto-draggable').element as HTMLElement;
+    Object.defineProperty(box, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 80 });
+    box.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, right: 130, bottom: 100, width: 120, height: 80 }) as DOMRect;
+
+    wrapper
+      .get('.rotation-handle')
+      .element.dispatchEvent(pointerEvent('pointerdown', 70, 0, { isPrimary: true }));
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 130, 60));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 130, 60));
+    await nextTick();
+
+    expect(wrapper.emitted('rotate-start')?.[0]?.[1]).toBe(0);
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(90);
+    expect(wrapper.emitted('rotate')?.at(-1)?.[0]).toBe(90);
+    expect(wrapper.emitted('rotate-stop')?.[0]?.slice(1)).toEqual([0, 90]);
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain('rotate(90deg)');
+    expect(wrapper.emitted('drag-start')).toBeFalsy();
+  });
+
+  it('normalizes handle rotation across the 180 degree boundary', async () => {
+    const wrapper = mountBox({ active: true, rotatable: true, rotate: 170 });
+    const box = wrapper.get('.auto-draggable').element as HTMLElement;
+    Object.defineProperty(box, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 80 });
+    box.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, right: 130, bottom: 100, width: 120, height: 80 }) as DOMRect;
+
+    wrapper
+      .get('.rotation-handle')
+      .element.dispatchEvent(pointerEvent('pointerdown', 70, 0, { isPrimary: true }));
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 80, 1));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 80, 1));
+
+    const value = wrapper.emitted('update:rotate')?.at(-1)?.[0] as number;
+    expect(value).toBeGreaterThan(-180);
+    expect(value).toBeLessThanOrEqual(180);
+  });
+
+  it('cancels an active rotation with Escape and restores the previous angle', async () => {
+    const wrapper = mountBox({ active: true, rotatable: true, rotate: 15 });
+    const box = wrapper.get('.auto-draggable').element as HTMLElement;
+    Object.defineProperty(box, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 80 });
+    box.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, right: 130, bottom: 100, width: 120, height: 80 }) as DOMRect;
+
+    wrapper
+      .get('.rotation-handle')
+      .element.dispatchEvent(pointerEvent('pointerdown', 70, 0, { isPrimary: true }));
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 130, 60));
+    await flushFrame();
+    await wrapper.get('.auto-draggable').trigger('keydown', { key: 'Escape' });
+
+    expect(wrapper.emitted('rotate-cancel')?.[0]?.slice(1)).toEqual([15, 15]);
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(15);
+    expect(wrapper.emitted('rotate-stop')).toBeFalsy();
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain('rotate(15deg)');
+  });
+
+  it('supports external rotation updates and accessible keyboard rotation', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      rotate: 30,
+      keyboardEnabled: true,
+      keyboardStep: 5
+    });
+    await wrapper.setProps({ rotate: 45 });
+    expect(wrapper.get('.auto-draggable').attributes('style')).toContain('rotate(45deg)');
+
+    const handle = wrapper.get('.rotation-handle');
+    expect(handle.attributes('role')).toBe('slider');
+    expect(handle.attributes('aria-keyshortcuts')).toBe('ArrowLeft ArrowRight Home');
+    await handle.trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(50);
+    await handle.trigger('keydown', { key: 'Home' });
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(0);
+  });
+
+  it('does not advertise rotation keyboard shortcuts while keyboard control is disabled', () => {
+    const wrapper = mountBox({ active: true, rotatable: true });
+    expect(wrapper.get('.rotation-handle').attributes('aria-keyshortcuts')).toBeUndefined();
+  });
+
+  it('honors rotation handle offsets below 16 pixels', () => {
+    const wrapper = mountBox({ active: true, rotatable: true, rotationHandleOffset: 8 });
+    expect(wrapper.get('.rotation-handle').attributes('style')).toContain(
+      '--rotation-handle-offset: 8px'
+    );
+  });
+
+  it.each([-5, Number.NaN])('falls back to a one-degree rotation step for %s', async step => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      rotate: 30,
+      keyboardEnabled: true,
+      keyboardStep: step
+    });
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(31);
   });
 });

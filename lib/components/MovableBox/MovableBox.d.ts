@@ -175,6 +175,16 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: PropType<string | number>;
         default: number;
     };
+    /** Shows an interactive rotation handle while the box is active. */
+    rotatable: {
+        type: BooleanConstructor;
+        default: boolean;
+    };
+    /** Visual distance in pixels between the box and the rotation handle. */
+    rotationHandleOffset: {
+        type: NumberConstructor;
+        default: number;
+    };
     /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
     transformOrigin: {
         type: StringConstructor;
@@ -190,6 +200,7 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     cancelInteraction: (source?: Event | null | undefined) => void;
 }, {}, {}, {}, import('vue').ComponentOptionsMixin, import('vue').ComponentOptionsMixin, {
     "update:modelValue": (value: ExtendsMovableBox) => void;
+    "update:rotate": (value: number) => void;
     drag: (value: ExtendsMovableBox) => void;
     "drag-start": (source: PointerEvent, value: ExtendsMovableBox) => void;
     "drag-stop": (source: PointerEvent, oldValue: ExtendsMovableBox, newValue: ExtendsMovableBox) => void;
@@ -198,6 +209,10 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     "drag-cancel": (source: Event | null, oldValue: ExtendsMovableBox, newValue: ExtendsMovableBox) => void;
     "resize-cancel": (source: Event | null, oldValue: ExtendsMovableBox, newValue: ExtendsMovableBox) => void;
     resize: (value: ExtendsMovableBox) => void;
+    "rotate-start": (source: Event, value: number) => void;
+    rotate: (value: number) => void;
+    "rotate-stop": (source: Event, oldValue: number, newValue: number) => void;
+    "rotate-cancel": (source: Event | null, oldValue: number, newValue: number) => void;
     move: (value: ExtendsMovableBox) => void;
     active: (value: ExtendsMovableBox) => void;
     inactive: (value: ExtendsMovableBox) => void;
@@ -381,6 +396,16 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: PropType<string | number>;
         default: number;
     };
+    /** Shows an interactive rotation handle while the box is active. */
+    rotatable: {
+        type: BooleanConstructor;
+        default: boolean;
+    };
+    /** Visual distance in pixels between the box and the rotation handle. */
+    rotationHandleOffset: {
+        type: NumberConstructor;
+        default: number;
+    };
     /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
     transformOrigin: {
         type: StringConstructor;
@@ -393,13 +418,18 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     onResize?: ((value: ExtendsMovableBox) => any) | undefined;
     onActive?: ((value: ExtendsMovableBox) => any) | undefined;
     onDisabled?: ((value: boolean) => any) | undefined;
+    onRotate?: ((value: number) => any) | undefined;
     "onUpdate:modelValue"?: ((value: ExtendsMovableBox) => any) | undefined;
+    "onUpdate:rotate"?: ((value: number) => any) | undefined;
     "onDrag-start"?: ((source: PointerEvent, value: ExtendsMovableBox) => any) | undefined;
     "onDrag-stop"?: ((source: PointerEvent, oldValue: ExtendsMovableBox, newValue: ExtendsMovableBox) => any) | undefined;
     "onResize-start"?: ((source: PointerEvent, value: ExtendsMovableBox) => any) | undefined;
     "onResize-stop"?: ((source: PointerEvent, oldValue: ExtendsMovableBox, newValue: ExtendsMovableBox) => any) | undefined;
     "onDrag-cancel"?: ((source: Event | null, oldValue: ExtendsMovableBox, newValue: ExtendsMovableBox) => any) | undefined;
     "onResize-cancel"?: ((source: Event | null, oldValue: ExtendsMovableBox, newValue: ExtendsMovableBox) => any) | undefined;
+    "onRotate-start"?: ((source: Event, value: number) => any) | undefined;
+    "onRotate-stop"?: ((source: Event, oldValue: number, newValue: number) => any) | undefined;
+    "onRotate-cancel"?: ((source: Event | null, oldValue: number, newValue: number) => any) | undefined;
     onMove?: ((value: ExtendsMovableBox) => any) | undefined;
     onInactive?: ((value: ExtendsMovableBox) => any) | undefined;
     "onOut-of-bounds"?: ((direction: DragDirection) => any) | undefined;
@@ -444,6 +474,8 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     allowOverlap: boolean;
     snapTargets: SnapTarget[];
     rotate: string | number;
+    rotatable: boolean;
+    rotationHandleOffset: number;
     transformOrigin: string;
 }, {}, {}, {}, string, import('vue').ComponentProvideOptions, true, {}, any>, {
     default?(_: {}): any;

@@ -45,6 +45,44 @@ export interface TransformOrigin {
   y: number;
 }
 
+const TRANSFORM_ORIGIN_KEYWORDS = new Set(['left', 'center', 'right', 'top', 'bottom']);
+const TRANSFORM_ORIGIN_LENGTH = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|%)$/;
+const TRANSFORM_ORIGIN_ZERO = /^[+-]?(?:0+(?:\.0*)?|\.0+)$/;
+const HORIZONTAL_ORIGIN_KEYWORDS = new Set(['left', 'right']);
+const VERTICAL_ORIGIN_KEYWORDS = new Set(['top', 'bottom']);
+
+const isOriginLength = (value: string) =>
+  TRANSFORM_ORIGIN_LENGTH.test(value) || TRANSFORM_ORIGIN_ZERO.test(value);
+
+const isValidOriginPair = (first: string, second: string) => {
+  if (isOriginLength(first)) {
+    return isOriginLength(second) || second === 'center' || VERTICAL_ORIGIN_KEYWORDS.has(second);
+  }
+  if (HORIZONTAL_ORIGIN_KEYWORDS.has(first)) {
+    return isOriginLength(second) || second === 'center' || VERTICAL_ORIGIN_KEYWORDS.has(second);
+  }
+  if (VERTICAL_ORIGIN_KEYWORDS.has(first)) {
+    return second === 'center' || HORIZONTAL_ORIGIN_KEYWORDS.has(second);
+  }
+  return first === 'center';
+};
+
+/** Keeps the supported CSS subset intact and maps unsupported syntax to center. */
+export const normalizeTransformOrigin = (spec: string): string => {
+  if (!spec) return 'center';
+  const parts = spec.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (parts.length === 0 || parts.length > 2) return 'center';
+  const tokensAreSupported = parts.every(
+    part =>
+      TRANSFORM_ORIGIN_KEYWORDS.has(part) ||
+      TRANSFORM_ORIGIN_LENGTH.test(part) ||
+      TRANSFORM_ORIGIN_ZERO.test(part)
+  );
+  if (!tokensAreSupported) return 'center';
+  if (parts.length === 2 && !isValidOriginPair(parts[0], parts[1])) return 'center';
+  return parts.join(' ');
+};
+
 /**
  * Resolves a CSS transform-origin ('center', 'top left', '50% 50%', '10px 20px') into
  * element-local coordinates for the given size. Keywords bind to their own axis in any
@@ -56,11 +94,8 @@ export const resolveTransformOrigin = (
   height: number
 ): TransformOrigin => {
   const fallback: TransformOrigin = { x: width / 2, y: height / 2 };
-  if (!spec) return fallback;
-  // More than two tokens (e.g. a z offset) or calc()/rem units are outside the
-  // supported subset; the first two tokens are still honored.
-  const parts = spec.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 2);
-  if (parts.length === 0) return fallback;
+  const normalized = normalizeTransformOrigin(spec);
+  const parts = normalized.split(' ');
 
   let x: number | null = null;
   let y: number | null = null;

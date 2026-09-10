@@ -5,6 +5,12 @@ const styleNumber = async (locator: Locator, property: string) =>
     return Number.parseFloat((element as HTMLElement).style.getPropertyValue(name));
   }, property);
 
+const rotationDegrees = async (locator: Locator) =>
+  locator.evaluate(element => {
+    const match = (element as HTMLElement).style.transform.match(/rotate\((-?[\d.]+)deg\)/);
+    return match ? Number(match[1]) : 0;
+  });
+
 const enableKeyboard = async (page: Page) => {
   await page
     .locator('.control-row')
@@ -18,7 +24,40 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: /VueMovableBox/ })).toBeVisible();
 });
 
-test('keyboard focus activates the box without stealing keys from slot controls', async ({ page }) => {
+test('demo renders its SVG icon system and favicon', async ({ page, request }) => {
+  const icons = page.locator('.demo-icon');
+  expect(await icons.count()).toBeGreaterThan(20);
+  await expect(icons.first()).toBeVisible();
+  await expect(page.locator('.group-canvas .demo-icon').first()).toHaveCSS(
+    'color',
+    'rgb(51, 65, 85)'
+  );
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/examples/favicon.svg');
+
+  const favicon = await request.get('/examples/favicon.svg');
+  expect(favicon.ok()).toBe(true);
+});
+
+test('demo layout keeps canvas bounds and status overlay visible without nested clipping', async ({
+  page
+}) => {
+  const canvas = page.locator('.canvas-container');
+  const wrapper = page.locator('.primary-canvas-wrapper');
+  const status = page.locator('.selection-info');
+  const dimensions = await canvas.evaluate(element => ({
+    clientHeight: element.clientHeight,
+    inlineHeight: Number.parseFloat((element as HTMLElement).style.height)
+  }));
+  const overflow = await wrapper.evaluate(element => element.scrollHeight - element.clientHeight);
+
+  expect(dimensions.clientHeight).toBe(dimensions.inlineHeight);
+  expect(overflow).toBeLessThanOrEqual(2);
+  await expect(status).toBeVisible();
+});
+
+test('keyboard focus activates the box without stealing keys from slot controls', async ({
+  page
+}) => {
   const box = page.locator('.auto-draggable').first();
   await enableKeyboard(page);
   await page.getByRole('button', { name: /deactivate/ }).click();
@@ -45,10 +84,10 @@ test('keyboard focus activates the box without stealing keys from slot controls'
 
 test('mouse dragging uses native pointer capture', async ({ page }) => {
   const box = page.locator('.auto-draggable').first();
-  await box.evaluate((element) => {
+  await box.evaluate(element => {
     element.addEventListener(
       'gotpointercapture',
-      (event) =>
+      event =>
         element.setAttribute('data-captured-pointer', String((event as PointerEvent).pointerId)),
       { once: true }
     );
@@ -70,8 +109,8 @@ test('mouse dragging uses native pointer capture', async ({ page }) => {
 test('native touch cancellation restores state and pen input completes', async ({ page }) => {
   const box = page.locator('.auto-draggable').first();
   const session = await page.context().newCDPSession(page);
-  await box.evaluate((element) => {
-    element.addEventListener('pointerdown', (event) => {
+  await box.evaluate(element => {
+    element.addEventListener('pointerdown', event => {
       element.setAttribute('data-pointer-type', (event as PointerEvent).pointerType);
     });
   });
@@ -130,7 +169,7 @@ test('native touch cancellation restores state and pen input completes', async (
 
 test('RTL keeps resize handles on their physical edges', async ({ page }) => {
   const box = page.locator('.auto-draggable').first();
-  await box.evaluate((element) => element.setAttribute('dir', 'rtl'));
+  await box.evaluate(element => element.setAttribute('dir', 'rtl'));
   const leftHandle = box.locator('.handle-ml');
   const topLeftHandle = box.locator('.handle-tl');
   const topRightHandle = box.locator('.handle-tr');
@@ -147,7 +186,10 @@ test('RTL keeps resize handles on their physical edges', async ({ page }) => {
 
   const initialLeft = await styleNumber(box, 'left');
   const initialWidth = await styleNumber(box, 'width');
-  await page.mouse.move(leftBounds!.x + leftBounds!.width / 2, leftBounds!.y + leftBounds!.height / 2);
+  await page.mouse.move(
+    leftBounds!.x + leftBounds!.width / 2,
+    leftBounds!.y + leftBounds!.height / 2
+  );
   await page.mouse.down();
   await page.mouse.move(leftBounds!.x + 20, leftBounds!.y + leftBounds!.height / 2);
   await page.mouse.up();
@@ -179,7 +221,9 @@ test('group drag moves the whole selection and reports a batch payload', async (
   await expect(page.locator('.group-selected-label')).toContainText('g1, g2');
 });
 
-test('unselected group member is left in place while the selection follows the leader', async ({ page }) => {
+test('unselected group member is left in place while the selection follows the leader', async ({
+  page
+}) => {
   const unselected = page.locator('.group-canvas .auto-draggable').nth(2);
   const leader = page.locator('.group-canvas .auto-draggable').nth(1);
   await leader.scrollIntoViewIfNeeded();
@@ -222,4 +266,70 @@ test('rotation applies as CSS transform and rotated boxes still drag cleanly', a
 
   expect(await styleNumber(box, 'left')).toBeCloseTo(before + 40 / scale, 0);
   await expect(box).toHaveAttribute('style', /rotate\(45deg\)/);
+});
+
+test('rotation handle captures the pointer and Escape restores the committed angle', async ({
+  page
+}) => {
+  const box = page.locator('.auto-draggable').first();
+  const handle = box.getByRole('slider', { name: 'Rotation' });
+  await box.scrollIntoViewIfNeeded();
+  await expect(handle).toBeVisible();
+  await box.evaluate(element => {
+    element.addEventListener(
+      'gotpointercapture',
+      event =>
+        element.setAttribute('data-rotation-pointer', String((event as PointerEvent).pointerId)),
+      { once: true }
+    );
+  });
+
+  const boxBounds = await box.boundingBox();
+  const handleBounds = await handle.boundingBox();
+  expect(boxBounds && handleBounds).toBeTruthy();
+  const center = {
+    x: boxBounds!.x + boxBounds!.width / 2,
+    y: boxBounds!.y + boxBounds!.height / 2
+  };
+
+  await page.mouse.move(
+    handleBounds!.x + handleBounds!.width / 2,
+    handleBounds!.y + handleBounds!.height / 2
+  );
+  await page.mouse.down();
+  await expect(box).toHaveClass(/is-rotating/);
+  await expect(box).toHaveAttribute('data-rotation-pointer', /\d+/);
+  await page.mouse.move(center.x + 70, center.y, { steps: 5 });
+  expect(await rotationDegrees(box)).toBeCloseTo(90, 0);
+  await page.mouse.up();
+  await expect(box).not.toHaveClass(/is-rotating/);
+  await expect(page.locator('.log-container')).toContainText('rotate-stop');
+
+  const committedAngle = await rotationDegrees(box);
+  const rotatedBounds = await box.boundingBox();
+  const rotatedHandleBounds = await handle.boundingBox();
+  expect(rotatedBounds && rotatedHandleBounds).toBeTruthy();
+  const rotatedCenter = {
+    x: rotatedBounds!.x + rotatedBounds!.width / 2,
+    y: rotatedBounds!.y + rotatedBounds!.height / 2
+  };
+
+  const externalControl = page
+    .locator('.control-row', { hasText: '缩放比例' })
+    .locator('input[type="range"]');
+  await externalControl.focus();
+  await page.mouse.move(
+    rotatedHandleBounds!.x + rotatedHandleBounds!.width / 2,
+    rotatedHandleBounds!.y + rotatedHandleBounds!.height / 2
+  );
+  await page.mouse.down();
+  expect(await box.evaluate(element => element.contains(document.activeElement))).toBe(false);
+  await page.mouse.move(rotatedCenter.x, rotatedCenter.y + 70, { steps: 5 });
+  expect(await rotationDegrees(box)).not.toBe(committedAngle);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+
+  expect(await rotationDegrees(box)).toBe(committedAngle);
+  await expect(box).not.toHaveClass(/is-rotating/);
+  await expect(page.locator('.log-container')).toContainText('rotate-cancel');
 });

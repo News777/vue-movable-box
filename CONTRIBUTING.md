@@ -5,6 +5,7 @@
 ## 开发环境
 
 ### 前置要求
+
 - Node.js >= 18.0.0
 - pnpm >= 9.0.0
 
@@ -38,17 +39,20 @@ pnpm build-only
 ## 代码规范
 
 ### TypeScript
+
 - 使用严格的 TypeScript 配置
 - 避免使用 `any` 类型
 - 为所有公共 API 添加类型定义
 
 ### Vue 组件
+
 - 使用 `<script setup lang="ts">` 语法
 - 为所有 props 和 emits 添加类型定义
 - 使用 `defineExpose` 暴露组件方法
 
 ### 样式
-- 使用 SCSS 预处理器
+
+- 主组件使用 scoped 原生 CSS，避免为消费者引入 Sass 编译依赖
 - 遵循组件样式最佳实践
 - 确保响应式和 RTL 支持
 
@@ -65,6 +69,7 @@ pnpm build-only
 ```
 
 类型 (type)：
+
 - `feat`: 新功能
 - `fix`: Bug 修复
 - `docs`: 文档更新
@@ -75,6 +80,7 @@ pnpm build-only
 - `chore`: 构建/工具
 
 示例：
+
 ```
 feat(touch): 添加移动端触摸支持
 
@@ -89,10 +95,13 @@ Closes #123
 确保提交前运行：
 
 ```bash
+# 单元测试
+pnpm test
+
 # 类型检查
 pnpm type-check
 
-# 构建
+# 类型检查与生产构建
 pnpm build
 ```
 

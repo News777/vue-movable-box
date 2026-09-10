@@ -44,9 +44,9 @@ npm install vue-movable-box
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { MovableBox } from 'vue-movable-box'
-import 'vue-movable-box/style.css'
+import { ref } from 'vue';
+import { MovableBox } from 'vue-movable-box';
+import 'vue-movable-box/style.css';
 
 const boxConfig = ref({
   left: 100,
@@ -54,14 +54,12 @@ const boxConfig = ref({
   width: 200,
   height: 150,
   zIndex: 1
-})
+});
 </script>
 
 <template>
   <MovableBox v-model="boxConfig">
-    <div class="content">
-      拖拽内容区域
-    </div>
+    <div class="content">拖拽内容区域</div>
   </MovableBox>
 </template>
 ```
@@ -80,59 +78,64 @@ pnpm dev
 
 ### Props
 
-| 属性 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `v-model` | `MovableBoxRect` | 必填 | 绑定位置和尺寸 |
-| `theme` | `string` | `#409EFD` | 主题色（激活状态边框色） |
-| `inActiveColor` | `string` | `#666666` | 失活状态边框颜色 |
-| `unitType` | `'px' \| '%'` | `'px'` | 尺寸单位类型 |
-| `scale` | `number \| string` | `1` | 组件整体缩放比例 |
-| `isKeepDecimals` | `boolean` | `false` | 是否保留小数 |
-| `decimalPlaces` | `number` | `2` | 保留小数位数 |
-| `draggable` | `boolean` | `true` | 是否可拖拽 |
-| `dragHandle` | `string` | - | 拖拽触发区域的 CSS 选择器；设置后仅方框内命中该选择器的元素可发起拖拽 |
-| `dragCancel` | `string` | - | 拖拽排除区域的 CSS 选择器；命中元素（如表单、按钮）不会触发拖拽 |
-| `canDrag` | `(value: MovableBoxRect) => boolean` | - | 拖拽前置守卫；返回 `false` 时拒绝本次拖拽，且不修改模型 |
-| `canResize` | `(value: MovableBoxRect, handle: HandlePosition) => boolean` | - | 缩放前置守卫；返回 `false` 时拒绝本次缩放，且不修改模型 |
-| `resizable` | `boolean` | `true` | 是否可调整大小（推荐名称） |
-| `resizeable` | `boolean` | `true` | `resizable` 的兼容旧别名，已废弃 |
-| `limitAreaForParent` | `boolean` | `true` | 是否限制在父元素区域内 |
-| `limitAreaClass` | `string` | - | 自定义限制区域的 CSS 选择器 |
-| `maxWidth` | `number \| string` | - | 最大宽度 |
-| `maxHeight` | `number \| string` | - | 最大高度 |
-| `minWidth` | `number \| string` | `0` | 最小宽度 |
-| `minHeight` | `number \| string` | `0` | 最小高度 |
-| `ratioLock` | `boolean` | `false` | 调整大小时是否锁定宽高比 |
-| `active` | `boolean` | `false` | 是否处于激活状态 |
-| `disabled` | `boolean` | `false` | 是否完全禁用 |
-| `disabledUserSelect` | `boolean` | `true` | 拖拽时是否禁止文本选择 |
-| `initRect` | `boolean` | `false` | 只读模式（仅展示位置尺寸） |
-| `handles` | `HandlePosition[]` | 全部8个 | 允许显示的调整手柄 |
-| **网格与吸附** | | | |
-| `snapToGrid` | `boolean` | `false` | 是否吸附到网格 |
-| `gridSize` | `number` | `20` | 网格大小（当前坐标单位） |
-| `snapToElements` | `boolean` | `false` | 吸附到 `snapTargets` 的边缘或中心 |
-| `snapThreshold` | `number` | `10` | 元素吸附阈值 |
-| `snapTargets` | `SnapTarget[]` | `[]` | 其他元素的矩形数据；调用方应排除自身 |
-| `snapFilter` | `(target, axis) => boolean` | `undefined` | 返回 false 可在对应轴（`horizontal` / `vertical`）上排除该吸附目标 |
-| `snapPriority` | `('alignment' \| 'spacing')[]` | `['alignment','spacing']` | 每个轴的策略咨询顺序；阈值内首个产出候选的策略生效 |
-| `collisionEnabled` | `boolean` | `false` | 对 `snapTargets` 启用碰撞检测 |
-| `allowOverlap` | `boolean` | `false` | 检测到碰撞时是否仍允许重叠 |
-| **方向控制** | | | |
-| `dragDirections` | `string[]` | `['top','bottom','left','right']` | 允许拖拽的方向 |
-| `resizeDirections` | `string[]` | 全部8个 | 允许调整的方向 |
-| **边界与边距** | | | |
-| `edgeDistance` | `number` | `0` | 四边统一边距 |
-| `boundsMargin` | `Object` | `{top:0,right:0,bottom:0,left:0}` | 每侧附加边距，与 `edgeDistance` 相加 |
-| **交互** | | | |
-| `enableTransition` | `boolean` | `false` | 启用过渡动画 |
-| `keyboardEnabled` | `boolean` | `false` | 启用键盘操作 |
-| `keyboardStep` | `number` | `1` | 方向键移动步长；配合 Shift 键作为缩放步长 |
+| 属性                 | 类型                                                         | 默认值                            | 说明                                                                  |
+| -------------------- | ------------------------------------------------------------ | --------------------------------- | --------------------------------------------------------------------- |
+| `v-model`            | `MovableBoxRect`                                             | 必填                              | 绑定位置和尺寸                                                        |
+| `theme`              | `string`                                                     | `#409EFD`                         | 主题色（激活状态边框色）                                              |
+| `inActiveColor`      | `string`                                                     | `#666666`                         | 失活状态边框颜色                                                      |
+| `unitType`           | `'px' \| '%'`                                                | `'px'`                            | 尺寸单位类型                                                          |
+| `scale`              | `number \| string`                                           | `1`                               | 组件整体缩放比例                                                      |
+| `isKeepDecimals`     | `boolean`                                                    | `false`                           | 是否保留小数                                                          |
+| `decimalPlaces`      | `number`                                                     | `2`                               | 保留小数位数                                                          |
+| `draggable`          | `boolean`                                                    | `true`                            | 是否可拖拽                                                            |
+| `dragHandle`         | `string`                                                     | -                                 | 拖拽触发区域的 CSS 选择器；设置后仅方框内命中该选择器的元素可发起拖拽 |
+| `dragCancel`         | `string`                                                     | -                                 | 拖拽排除区域的 CSS 选择器；命中元素（如表单、按钮）不会触发拖拽       |
+| `canDrag`            | `(value: MovableBoxRect) => boolean`                         | -                                 | 拖拽前置守卫；返回 `false` 时拒绝本次拖拽，且不修改模型               |
+| `canResize`          | `(value: MovableBoxRect, handle: HandlePosition) => boolean` | -                                 | 缩放前置守卫；返回 `false` 时拒绝本次缩放，且不修改模型               |
+| `resizable`          | `boolean`                                                    | `true`                            | 是否可调整大小（推荐名称）                                            |
+| `resizeable`         | `boolean`                                                    | `true`                            | `resizable` 的兼容旧别名，已废弃                                      |
+| `limitAreaForParent` | `boolean`                                                    | `true`                            | 是否限制在父元素区域内                                                |
+| `limitAreaClass`     | `string`                                                     | -                                 | 自定义限制区域的 CSS 选择器                                           |
+| `maxWidth`           | `number \| string`                                           | -                                 | 最大宽度                                                              |
+| `maxHeight`          | `number \| string`                                           | -                                 | 最大高度                                                              |
+| `minWidth`           | `number \| string`                                           | `0`                               | 最小宽度                                                              |
+| `minHeight`          | `number \| string`                                           | `0`                               | 最小高度                                                              |
+| `ratioLock`          | `boolean`                                                    | `false`                           | 调整大小时是否锁定宽高比                                              |
+| `active`             | `boolean`                                                    | `false`                           | 是否处于激活状态                                                      |
+| `disabled`           | `boolean`                                                    | `false`                           | 是否完全禁用                                                          |
+| `disabledUserSelect` | `boolean`                                                    | `true`                            | 拖拽时是否禁止文本选择                                                |
+| `initRect`           | `boolean`                                                    | `false`                           | 只读模式（仅展示位置尺寸）                                            |
+| `handles`            | `HandlePosition[]`                                           | 全部8个                           | 允许显示的调整手柄                                                    |
+| `memberId`           | `string`                                                     | 自动生成                          | `MovableGroup` 中使用的稳定成员标识                                   |
+| `rotate`             | `number \| string`                                           | `0`                               | 顺时针旋转角度（度）                                                  |
+| `rotatable`          | `boolean`                                                    | `false`                           | 激活时显示交互式旋转手柄                                              |
+| `rotationHandleOffset` | `number`                                                  | `28`                              | 方框与旋转手柄之间的非负屏幕像素距离                                  |
+| `transformOrigin`    | `string`                                                     | `center`                          | CSS 与几何计算统一使用的 transform-origin 子集                        |
+| **网格与吸附**       |                                                              |                                   |                                                                       |
+| `snapToGrid`         | `boolean`                                                    | `false`                           | 是否吸附到网格                                                        |
+| `gridSize`           | `number`                                                     | `20`                              | 网格大小（当前坐标单位）                                              |
+| `snapToElements`     | `boolean`                                                    | `false`                           | 吸附到 `snapTargets` 的边缘或中心                                     |
+| `snapThreshold`      | `number`                                                     | `10`                              | 元素吸附阈值                                                          |
+| `snapTargets`        | `SnapTarget[]`                                               | `[]`                              | 其他元素的矩形数据；组合内请使用 `id: memberId` 以排除成员目标          |
+| `snapFilter`         | `(target, axis) => boolean`                                  | `undefined`                       | 返回 false 可在对应轴（`horizontal` / `vertical`）上排除该吸附目标    |
+| `snapPriority`       | `('alignment' \| 'spacing')[]`                               | `['alignment','spacing']`         | 每个轴的策略咨询顺序；阈值内首个产出候选的策略生效                    |
+| `collisionEnabled`   | `boolean`                                                    | `false`                           | 对 `snapTargets` 启用碰撞检测                                         |
+| `allowOverlap`       | `boolean`                                                    | `false`                           | 检测到碰撞时是否仍允许重叠                                            |
+| **方向控制**         |                                                              |                                   |                                                                       |
+| `dragDirections`     | `string[]`                                                   | `['top','bottom','left','right']` | 允许拖拽的方向                                                        |
+| `resizeDirections`   | `string[]`                                                   | 全部8个                           | 允许调整的方向                                                        |
+| **边界与边距**       |                                                              |                                   |                                                                       |
+| `edgeDistance`       | `number`                                                     | `0`                               | 四边统一边距                                                          |
+| `boundsMargin`       | `Object`                                                     | `{top:0,right:0,bottom:0,left:0}` | 每侧附加边距，与 `edgeDistance` 相加                                  |
+| **交互**             |                                                              |                                   |                                                                       |
+| `enableTransition`   | `boolean`                                                    | `false`                           | 启用过渡动画                                                          |
+| `keyboardEnabled`    | `boolean`                                                    | `false`                           | 启用键盘操作                                                          |
+| `keyboardStep`       | `number`                                                     | `1`                               | 方向键移动步长；配合 Shift 键作为缩放步长                             |
 
 #### HandlePosition 类型
 
 ```ts
-type HandlePosition = 'tl' | 'tm' | 'tr' | 'ml' | 'mr' | 'bl' | 'bm' | 'br'
+type HandlePosition = 'tl' | 'tm' | 'tr' | 'ml' | 'mr' | 'bl' | 'bm' | 'br';
 // tl: 左上, tm: 上中, tr: 右上
 // ml: 左中, mr: 右中
 // bl: 左下, bm: 下中, br: 右下
@@ -142,62 +145,67 @@ type HandlePosition = 'tl' | 'tm' | 'tr' | 'ml' | 'mr' | 'bl' | 'bm' | 'br'
 
 ```ts
 interface MovableBoxRect {
-  left: number | string
-  top: number | string
-  width: number | string
-  height: number | string
-  zIndex?: number
+  left: number | string;
+  top: number | string;
+  width: number | string;
+  height: number | string;
+  zIndex?: number;
 }
 ```
 
 ### Events
 
-| 事件名 | 参数 | 说明 |
-|--------|------|------|
-| `update:modelValue` | `(value: MovableBoxRect)` | v-model 更新时触发 |
-| `drag-start` | `(event: PointerEvent, value: MovableBoxRect)` | 开始拖拽时触发 |
-| `drag` | `(value: MovableBoxRect)` | 拖拽过程中触发（节流） |
-| `drag-stop` | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | 停止拖拽时触发 |
-| `resize-start` | `(event: PointerEvent, value: MovableBoxRect)` | 开始调整大小时触发 |
-| `resize` | `(value: MovableBoxRect)` | 调整大小过程中触发（节流） |
-| `resize-stop` | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | 停止调整大小时触发 |
-| `drag-cancel` | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | 拖拽被取消（Escape、pointercancel 或 `cancelInteraction()`）时触发；矩形恢复到交互前状态，`newValue` 等于 `oldValue`，且不会触发 `drag-stop` |
-| `resize-cancel` | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | 缩放被取消时触发；语义与 `drag-cancel` 相同 |
-| `active` | `(value: MovableBoxRect)` | 组件被激活时触发 |
-| `inactive` | `(value: MovableBoxRect)` | 组件失去激活时触发 |
-| `disabled` | `(value: boolean)` | 禁用状态变化时触发 |
-| `dblclick` | `(event: MouseEvent)` | 双击组件时触发 |
-| `out-of-bounds` | `(direction: 'left' \| 'top' \| 'right' \| 'bottom')` | 超出边界时触发 |
-| `move` | `(value: MovableBoxRect)` | `drag` 的兼容旧别名，已废弃 |
-| `snap` | `(value: SnapEventPayload)` | 吸附状态、吸附点或目标发生变化时触发 |
-| `guides` | `(value: GuidesEventPayload)` | 吸附目标或辅助线坐标发生变化时触发 |
-| `collision` | `(value: CollisionEventPayload)` | 进入、改变或离开碰撞状态时触发 |
+| 事件名              | 参数                                                                         | 说明                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `update:modelValue` | `(value: MovableBoxRect)`                                                    | v-model 更新时触发                                                                                                                           |
+| `update:rotate`     | `(value: number)`                                                            | 旋转时为 `v-model:rotate` 触发更新                                                                                                           |
+| `drag-start`        | `(event: PointerEvent, value: MovableBoxRect)`                               | 开始拖拽时触发                                                                                                                               |
+| `drag`              | `(value: MovableBoxRect)`                                                    | 拖拽过程中触发（节流）                                                                                                                       |
+| `drag-stop`         | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)`  | 停止拖拽时触发                                                                                                                               |
+| `resize-start`      | `(event: PointerEvent, value: MovableBoxRect)`                               | 开始调整大小时触发                                                                                                                           |
+| `resize`            | `(value: MovableBoxRect)`                                                    | 调整大小过程中触发（节流）                                                                                                                   |
+| `resize-stop`       | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)`  | 停止调整大小时触发                                                                                                                           |
+| `drag-cancel`       | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | 拖拽被取消（Escape、pointercancel 或 `cancelInteraction()`）时触发；矩形恢复到交互前状态，`newValue` 等于 `oldValue`，且不会触发 `drag-stop` |
+| `resize-cancel`     | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | 缩放被取消时触发；语义与 `drag-cancel` 相同                                                                                                  |
+| `rotate-start`      | `(event: Event, value: number)`                                              | 开始操作旋转手柄时触发                                                                                                                       |
+| `rotate`            | `(value: number)`                                                            | 旋转角度变化时触发（指针输入会节流）                                                                                                         |
+| `rotate-stop`       | `(event: Event, oldValue: number, newValue: number)`                         | 旋转结束时触发                                                                                                                               |
+| `rotate-cancel`     | `(event: Event \| null, oldValue: number, newValue: number)`                 | 旋转取消时触发；角度恢复为 `oldValue`，且不触发 `rotate-stop`                                                                                 |
+| `active`            | `(value: MovableBoxRect)`                                                    | 组件被激活时触发                                                                                                                             |
+| `inactive`          | `(value: MovableBoxRect)`                                                    | 组件失去激活时触发                                                                                                                           |
+| `disabled`          | `(value: boolean)`                                                           | 禁用状态变化时触发                                                                                                                           |
+| `dblclick`          | `(event: MouseEvent)`                                                        | 双击组件时触发                                                                                                                               |
+| `out-of-bounds`     | `(direction: 'left' \| 'top' \| 'right' \| 'bottom')`                        | 超出边界时触发                                                                                                                               |
+| `move`              | `(value: MovableBoxRect)`                                                    | `drag` 的兼容旧别名，已废弃                                                                                                                  |
+| `snap`              | `(value: SnapEventPayload)`                                                  | 吸附状态、吸附点或目标发生变化时触发                                                                                                         |
+| `guides`            | `(value: GuidesEventPayload)`                                                | 吸附目标或辅助线坐标发生变化时触发                                                                                                           |
+| `collision`         | `(value: CollisionEventPayload)`                                             | 进入、改变或离开碰撞状态时触发                                                                                                               |
 
 交互处理顺序为：方向限制 → 网格吸附 → 元素吸附 → 边界限制 → 碰撞校验。高级事件只在状态变化时触发，不会在每个相同的拖拽帧重复触发。目标矩形、网格、阈值和边距均使用 `unitType` 对应的坐标单位；`unitType="%"` 时数值代表百分点。
 
-强制中止不等于取消：设置 `disabled` 或 `initRect`、或 `active` 变为 `false` 时，进行中的交互会就地结束——矩形不会还原，也不会触发取消事件。只有显式取消路径（Escape、`pointercancel`、指针捕获丢失、`cancelInteraction()`）才会恢复交互前矩形并触发 `drag-cancel` / `resize-cancel`。
+强制中止不等于取消：设置 `disabled` 或 `initRect`、或 `active` 变为 `false` 时，进行中的交互会就地结束——值不会还原，也不会触发取消事件。只有显式取消路径（Escape、`pointercancel`、指针捕获丢失、`cancelInteraction()`）才会恢复交互前的值，并触发 `drag-cancel`、`resize-cancel` 或 `rotate-cancel`。
 
 ```ts
 interface SnapEventPayload {
-  snapped: boolean
-  point?: SnapPoint // 已废弃的单吸附点兼容字段
-  points?: SnapPoint[]
-  targetId?: string
+  snapped: boolean;
+  point?: SnapPoint; // 已废弃的单吸附点兼容字段
+  points?: SnapPoint[];
+  targetId?: string;
   targetIds?: {
-    horizontal?: string
-    vertical?: string
-  }
+    horizontal?: string;
+    vertical?: string;
+  };
 }
 
 interface GuidesEventPayload {
-  vertical: number[]
-  horizontal: number[]
+  vertical: number[];
+  horizontal: number[];
 }
 
 interface CollisionEventPayload {
-  colliding: boolean
-  direction?: 'left' | 'right' | 'top' | 'bottom'
-  targetId?: string
+  colliding: boolean;
+  direction?: 'left' | 'right' | 'top' | 'bottom';
+  targetId?: string;
 }
 ```
 
@@ -211,7 +219,8 @@ interface CollisionEventPayload {
 - 方向键：按 `keyboardStep` 移动方框（受 `dragDirections` 限制）。
 - `Shift` + 方向键：以右下角手柄（或 `resizeDirections` 中第一个允许的手柄）为锚点调整大小，方向键指示被拖动边缘的移动方向，因此 `Shift+→`/`Shift+↓` 放大、`Shift+←`/`Shift+↑` 缩小。
 - 聚焦某个缩放手柄后，方向键沿该手柄的轴向调整大小（角手柄支持两个轴向），按住 `Shift` 反向；边缘手柄提供 `role="separator"`、方向、当前/最小/最大尺寸与快捷键语义，角落手柄提供 `role="group"` 和双轴缩放描述，所有手柄都有可访问名称。
-- `Escape`：指针拖拽或缩放进行中时取消本次交互——矩形恢复到交互前状态，并触发 `drag-cancel` / `resize-cancel`（而不是 `drag-stop` / `resize-stop`）；空闲且方框激活时则取消激活。
+- 聚焦旋转手柄后，左右方向键按 `keyboardStep` 调节角度，Shift 使用 10 倍步长，Home 将角度归零。
+- `Escape`：指针拖拽、缩放或旋转进行中时取消本次交互——恢复交互前的值，并触发对应的 cancel 事件而不是 stop 事件；空闲且方框激活时则取消激活。
 
 不开启 `keyboardEnabled` 时，手柄不可聚焦、方向键不生效，但 `Escape` 仍可取消进行中的指针交互。
 
@@ -227,35 +236,35 @@ interface CollisionEventPayload {
 </template>
 
 <script setup>
-const boxRef = ref()
+const boxRef = ref();
 
 // 获取当前配置
-boxRef.value.getConfig()
+boxRef.value.getConfig();
 
 // 设置位置
-boxRef.value.setPosition(100, 100)
+boxRef.value.setPosition(100, 100);
 
 // 设置大小
-boxRef.value.setSize(300, 200)
+boxRef.value.setSize(300, 200);
 
 // 重置到初始位置
-boxRef.value.reset()
+boxRef.value.reset();
 
 // 激活组件
-boxRef.value.activate()
+boxRef.value.activate();
 
 // 停用组件
-boxRef.value.deactivate()
+boxRef.value.deactivate();
 
-// 取消进行中的拖拽/缩放，恢复交互前的矩形
-boxRef.value.cancelInteraction()
+// 取消进行中的拖拽/缩放/旋转，恢复交互前的值
+boxRef.value.cancelInteraction();
 </script>
 ```
 
 ### Slots
 
-| 插槽名 | 说明 |
-|--------|------|
+| 插槽名    | 说明         |
+| --------- | ------------ |
 | `default` | 组件内容区域 |
 
 ## 高级用法
@@ -263,47 +272,29 @@ boxRef.value.cancelInteraction()
 ### 自定义主题色
 
 ```vue
-<MovableBox 
-  v-model="config"
-  theme="#ff6b6b"
-  inActiveColor="#ccc"
-/>
+<MovableBox v-model="config" theme="#ff6b6b" inActiveColor="#ccc" />
 ```
 
 ### 使用百分比单位
 
 ```vue
-<MovableBox 
-  v-model="config"
-  unit-type="%"
-  :max-width="100"
-  :max-height="100"
-/>
+<MovableBox v-model="config" unit-type="%" :max-width="100" :max-height="100" />
 ```
 
 ### 锁定宽高比
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :ratio-lock="true"
-/>
+<MovableBox v-model="config" :ratio-lock="true" />
 ```
 
 ### 自定义调整手柄
 
 ```vue
 <!-- 只显示右下角手柄 -->
-<MovableBox 
-  v-model="config"
-  :handles="['br']"
-/>
+<MovableBox v-model="config" :handles="['br']" />
 
 <!-- 显示四个角 -->
-<MovableBox 
-  v-model="config"
-  :handles="['tl', 'tr', 'bl', 'br']"
-/>
+<MovableBox v-model="config" :handles="['tl', 'tr', 'bl', 'br']" />
 ```
 
 ### 限制在指定区域内
@@ -324,11 +315,7 @@ boxRef.value.cancelInteraction()
 ### 网格吸附
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :snap-to-grid="true"
-  :grid-size="20"
-/>
+<MovableBox v-model="config" :snap-to-grid="true" :grid-size="20" />
 ```
 
 ### 元素吸附与碰撞
@@ -372,20 +359,21 @@ boxRef.value.cancelInteraction()
 ### 旋转与变换原点
 
 ```vue
-<MovableBox
-  v-model="config"
-  :rotate="45"
-  transform-origin="center"
-/>
+<MovableBox v-model="config" v-model:rotate="angle" rotatable transform-origin="center" />
 ```
 
 `rotate` 接受角度（顺时针，等同 CSS `rotate()`）。`transformOrigin` 支持 CSS transform-origin
-的一个子集：一到两个关键字（`left` / `center` / `right` / `top` / `bottom`）、百分比或按数字
-前缀解析的长度（如 `'center'`、`'top left'`、`'50% 25%'`、`'10px 20px'`）；多余 token 会被
-忽略，无法解析的值（如 `calc()`）回退到 center。旋转下的缩放会把指针与键盘位移映射到方框的
-本地坐标系（按逆角度旋转），手柄沿旋转后的边缘放大或缩小。手柄本身采用"本地坐标系增量缩放"
+的一个子集：由关键字（`left` / `center` / `right` / `top` / `bottom`）、百分比或 `px`
+长度组成的合法一到两个 token 位置组合（如 `'center'`、`'top left'`、`'50% 25%'`、
+`'10px 20px'`）。多余 token 和无法解析的值（如 `calc()`）均视为非法并回退到 center。旋转下的
+缩放会把指针与键盘位移映射到方框的本地坐标系（按逆角度旋转），手柄沿旋转后的边缘放大或缩小。
+手柄本身采用"本地坐标系增量缩放"
 模型，而非精确的逆运动学锚定：大角度下手柄的屏幕位移与指针路径不一致，但最小/最大尺寸、
 比例锁定、边界与碰撞约束仍按文档语义执行。
+
+设置 `rotatable` 后，激活方框会显示旋转手柄，拖动手柄会更新 `v-model:rotate`。同时开启
+`keyboardEnabled` 时，聚焦旋转手柄后可用左右方向键按 `keyboardStep` 调节角度，按住 Shift
+以 10 倍步长调节，按 Home 归零。
 
 旋转几何语义（在 3.0.0 中定义）：
 
@@ -398,18 +386,15 @@ boxRef.value.cancelInteraction()
 - **网格吸附**继续对齐未旋转的左上角。
 - 平移（指针拖拽、键盘移动、组合移动）不受旋转影响。
 - 吸附辅助线渲染在方框元素内部、随之一起旋转，`rotate ≠ 0` 时虚线不一定精确落在目标边上。
-- 旋转几何假定 `px` 单位；`%` 单位下 AABB 计算在百分比空间近似进行。
+- `unitType="%"` 时，AABB 会先把矩形和 px 变换原点换算到父容器像素空间，完成计算后再
+  转回百分点；旋转缩放的输入位移仍沿用组件的百分比坐标近似模型。
 
 `rotate: 0` 的方框与 2.x 行为完全一致，升级无需改动。
 
 ### 键盘控制
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :keyboard-enabled="true"
-  :keyboard-step="5"
-/>
+<MovableBox v-model="config" :keyboard-enabled="true" :keyboard-step="5" />
 <!-- 
   按方向键 ↑↓←→ 移动
   按 Escape 取消激活
@@ -420,22 +405,16 @@ boxRef.value.cancelInteraction()
 
 ```vue
 <!-- 只允许左右拖拽，禁止上下移动 -->
-<MovableBox 
-  v-model="config"
-  :drag-directions="['left', 'right']"
-/>
+<MovableBox v-model="config" :drag-directions="['left', 'right']" />
 
 <!-- 只显示左右调整手柄 -->
-<MovableBox 
-  v-model="config"
-  :resize-directions="['ml', 'mr']"
-/>
+<MovableBox v-model="config" :resize-directions="['ml', 'mr']" />
 ```
 
 ### 边界边距
 
 ```vue
-<MovableBox 
+<MovableBox
   v-model="config"
   :edge-distance="20"
   :bounds-margin="{ top: 10, right: 10, bottom: 10, left: 10 }"
@@ -445,10 +424,7 @@ boxRef.value.cancelInteraction()
 ### 过渡动画
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :enable-transition="true"
-/>
+<MovableBox v-model="config" :enable-transition="true" />
 ```
 
 ### 事件监听示例
@@ -456,17 +432,17 @@ boxRef.value.cancelInteraction()
 ```vue
 <script setup>
 const handleDragStart = (e, value) => {
-  console.log('开始拖拽', value)
-}
+  console.log('开始拖拽', value);
+};
 
 const handleDragStop = (e, oldVal, newVal) => {
-  console.log('停止拖拽', { 旧位置: oldVal, 新位置: newVal })
-}
+  console.log('停止拖拽', { 旧位置: oldVal, 新位置: newVal });
+};
 
-const handleOutOfBounds = (direction) => {
-  console.log('超出边界:', direction)
+const handleOutOfBounds = direction => {
+  console.log('超出边界:', direction);
   // direction: 'left' | 'top' | 'right' | 'bottom'
-}
+};
 </script>
 
 <template>
@@ -483,21 +459,21 @@ const handleOutOfBounds = (direction) => {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from 'vue';
 
 const boxes = ref([
-  { id: 1, config: { left: 50, top: 50, width: 200, height: 150, zIndex: 1 }},
-  { id: 2, config: { left: 300, top: 100, width: 200, height: 150, zIndex: 2 }}
-])
+  { id: 1, config: { left: 50, top: 50, width: 200, height: 150, zIndex: 1 } },
+  { id: 2, config: { left: 300, top: 100, width: 200, height: 150, zIndex: 2 } }
+]);
 
-const activeId = ref(null)
+const activeId = ref(null);
 
 const handleActive = (box, rect) => {
   // 点击激活时更新 zIndex
-  const maxZ = Math.max(...boxes.value.map(b => b.config.zIndex))
-  box.config.zIndex = maxZ + 1
-  activeId.value = box.id
-}
+  const maxZ = Math.max(...boxes.value.map(b => b.config.zIndex));
+  box.config.zIndex = maxZ + 1;
+  activeId.value = box.id;
+};
 </script>
 
 <template>
@@ -523,32 +499,27 @@ const handleActive = (box, rect) => {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { MovableBox, MovableGroup } from 'vue-movable-box'
+import { ref } from 'vue';
+import { MovableBox, MovableGroup } from 'vue-movable-box';
 
 const rects = ref({
   a: { left: 20, top: 20, width: 140, height: 90 },
   b: { left: 220, top: 70, width: 140, height: 90 }
-})
-const selected = ref(['a', 'b'])
+});
+const selected = ref(['a', 'b']);
 
-const onMoveStop = (payload) => {
+const onMoveStop = payload => {
   // 不可变批量载荷：整个组合一次性应用。
   for (const record of payload.rects) {
-    console.log(record.id, record.startRect, '->', record.rect)
+    console.log(record.id, record.startRect, '->', record.rect);
   }
-}
+};
 </script>
 
 <template>
   <div class="canvas">
     <MovableGroup v-model:selected="selected" @move-stop="onMoveStop">
-      <MovableBox
-        v-for="(rect, id) in rects"
-        :key="id"
-        :member-id="id"
-        v-model="rects[id]"
-      />
+      <MovableBox v-for="(rect, id) in rects" :key="id" :member-id="id" v-model="rects[id]" />
     </MovableGroup>
   </div>
 </template>
@@ -565,7 +536,8 @@ const onMoveStop = (payload) => {
   `move-cancel`，整个组合还原到交互前的矩形。
 - 强制中止（例如拖拽中切换 `disabled`）会直接结束会话、不还原，与单方框语义一致；引导方框
   在拖拽中被卸载同理，其余成员停留在当前位置。
-- 第二个并发指针无法抢占进行中的会话：它只单独拖动自己所在的方框，进行中的组合不受影响。
+- 第二个并发指针无法抢占进行中的会话：未选成员仍可单独拖动；已在活动组合中的成员会拒绝第二次
+  交互，确保进行中的组合不被改变。
 - 组几何使用未旋转的成员矩形：成员 `rotate ≠ 0` 时按未旋转形态约束，其视觉 AABB 可能因旋转
   外扩而超出区域边缘。
 - 暴露方法：`getSelected()`、`select(ids?)`、`getMemberRects()`。
@@ -575,13 +547,13 @@ const onMoveStop = (payload) => {
 完整 TypeScript 类型支持：
 
 ```ts
-import { 
-  MovableBox, 
+import {
+  MovableBox,
   type MovableBoxProps,
   type MovableBoxRect,
   type ExtendsMovableBox,
-  type HandlesSet 
-} from 'vue-movable-box'
+  type HandlesSet
+} from 'vue-movable-box';
 
 // 使用类型
 const config: MovableBoxRect = {
@@ -590,19 +562,19 @@ const config: MovableBoxRect = {
   width: 200,
   height: 150,
   zIndex: 1
-}
+};
 ```
 
 ## 浏览器支持
 
-| 浏览器 | 最低版本 |
-|--------|----------|
-| Chrome | >= 88 |
-| Firefox | >= 85 |
-| Safari | >= 14 |
-| Edge | >= 88 |
-| iOS Safari | >= 14 |
-| Android Chrome | >= 88 |
+| 浏览器         | 最低版本 |
+| -------------- | -------- |
+| Chrome         | >= 88    |
+| Firefox        | >= 85    |
+| Safari         | >= 14    |
+| Edge           | >= 88    |
+| iOS Safari     | >= 14    |
+| Android Chrome | >= 88    |
 
 ## 项目结构
 
@@ -614,8 +586,7 @@ vue-movable-box/
 │   │   └── MovableBox.ts        # 类型定义
 │   └── components/
 │       └── MovableBox/
-│           ├── MovableBox.vue   # 主组件
-│           ├── style.scss       # 样式
+│           ├── MovableBox.vue   # 主组件与 scoped 样式
 │           └── utils.ts         # 工具函数
 ├── examples/                    # 示例代码
 │   ├── App.vue                  # 完整演示

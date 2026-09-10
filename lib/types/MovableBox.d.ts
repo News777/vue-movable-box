@@ -105,8 +105,14 @@ export interface MovableBoxProps<T extends object = object> {
     snapPriority?: SnapStrategy[];
     /** Clockwise rotation in degrees; bounds, snapping, and collision use the rotated AABB. */
     rotate?: number | string;
+    /** Shows an interactive rotation handle while the box is active. */
+    rotatable?: boolean;
+    /** Non-negative visual distance in pixels between the box and the rotation handle. */
+    rotationHandleOffset?: number;
     /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
     transformOrigin?: string;
+    /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
+    memberId?: string;
     collisionEnabled?: boolean;
     allowOverlap?: boolean;
     snapTargets?: SnapTarget[];
@@ -118,6 +124,6 @@ export interface MovableBoxExpose<T extends object = object> {
     reset: () => void;
     activate: () => void;
     deactivate: () => void;
-    /** Cancels an in-progress drag or resize and restores the pre-interaction rectangle. */
+    /** Cancels an in-progress drag, resize, or rotation and restores its previous value. */
     cancelInteraction: (source?: Event | null) => void;
 }

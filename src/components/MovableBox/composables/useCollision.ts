@@ -41,7 +41,9 @@ const resolveAlongPath = (
   targets: SnapTarget[],
   normalize: (rect: NumericRect) => NumericRect
 ) => {
-  if (!findFirstCollisionPathInterval(previous, candidate, targets)) return candidate;
+  if (!findFirstCollisionPathInterval(previous, candidate, targets)) {
+    return { rect: candidate, progress: 1 };
+  }
 
   let lower = 0;
   let upper = 1;
@@ -56,7 +58,7 @@ const resolveAlongPath = (
       upper = progress;
     }
   }
-  return resolved;
+  return { rect: resolved, progress: lower };
 };
 
 export function useCollision(getOptions: () => UseCollisionOptions) {
@@ -95,7 +97,7 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
     const options = getOptions();
     const candidateState = evaluate(candidate, targets);
     if (!options.enabled || options.allowOverlap) {
-      return { accepted: true, rect: candidate, ...candidateState };
+      return { accepted: true, rect: candidate, progress: 1, ...candidateState };
     }
 
     const previousResults = checkAllCollisions(previous, targets);
@@ -104,13 +106,14 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
       return {
         accepted: candidateState.totalOverlapArea < previousOverlap,
         rect: candidate,
+        progress: 1,
         ...candidateState
       };
     }
 
     const pathInterval = findFirstCollisionPathInterval(previous, candidate, targets);
     if (candidateState.results.length === 0 && !pathInterval) {
-      return { accepted: true, rect: candidate, ...candidateState };
+      return { accepted: true, rect: candidate, progress: 1, ...candidateState };
     }
 
     let collisionState = candidateState;
@@ -123,7 +126,7 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
       collisionState = setCollisionResults(checkAllCollisions(witness, targets));
     }
 
-    let resolved: NumericRect | null = null;
+    let resolved: { rect: NumericRect; progress?: number } | null = null;
     if (resolution === 'slide') {
       const horizontal = resolveAlongPath(
         previous,
@@ -139,19 +142,20 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
       );
       const sliding = normalize({
         ...candidate,
-        left: horizontal.left,
-        top: vertical.top
+        left: horizontal.rect.left,
+        top: vertical.rect.top
       });
       if (!findFirstCollisionPathInterval(previous, sliding, targets)) {
-        resolved = sliding;
+        resolved = { rect: sliding };
       }
     }
 
     resolved ??= resolveAlongPath(previous, candidate, targets, normalize);
 
     return {
-      accepted: !sameRect(resolved, previous),
-      rect: resolved,
+      accepted: !sameRect(resolved.rect, previous),
+      rect: resolved.rect,
+      progress: resolved.progress,
       ...collisionState
     };
   };

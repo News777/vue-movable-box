@@ -33,10 +33,7 @@ const emit = defineEmits<{
   (event: 'update:selected', ids: string[]): void;
   (event: 'move-start', payload: GroupMoveStartPayload): void;
   (event: 'move', payload: GroupMovePayload): void;
-  (
-    event: 'move-stop',
-    payload: GroupMoveStopPayload
-  ): void;
+  (event: 'move-stop', payload: GroupMoveStopPayload): void;
   (event: 'move-cancel', payload: GroupMoveCancelPayload): void;
 }>();
 
@@ -46,7 +43,7 @@ const session = ref<GroupDragSession | null>(null);
 
 const usesExternalSelection = computed(() => props.selected !== undefined);
 const selectedIds = computed<string[]>({
-  get: () => (usesExternalSelection.value ? props.selected ?? [] : internalSelected.value),
+  get: () => (usesExternalSelection.value ? (props.selected ?? []) : internalSelected.value),
   set: value => {
     internalSelected.value = value;
     emit('update:selected', value);
@@ -133,14 +130,18 @@ const context: GroupContext = {
       setSelection(selectedIds.value.filter(memberId => memberId !== id));
     }
   },
+  hasMember: id => id !== undefined && members.has(id),
   beginDrag: (id, source) => {
-    // One formation at a time: a second concurrent pointer is ignored for group movement
-    // (it still drags its own box solo through the normal box interaction).
-    if (session.value && session.value.leaderId !== id) return;
-    if (!members.has(id)) return;
-    if (!selectedIds.value.includes(id)) setSelection([id]);
+    // A member outside the active formation may still drag solo. A selected member is
+    // blocked so a second pointer cannot deform the formation owned by the first leader.
+    if (session.value && session.value.leaderId !== id) {
+      return session.value.startRects.has(id) ? 'blocked' : 'solo';
+    }
+    if (!members.has(id)) return 'solo';
+    const nextSelection = selectedIds.value.includes(id) ? [...selectedIds.value] : [id];
+    if (!selectedIds.value.includes(id)) setSelection(nextSelection);
     const startRects = new Map<string, ExtendsMovableBox>();
-    for (const memberId of selectedIds.value) {
+    for (const memberId of nextSelection) {
       const api = members.get(memberId);
       if (api) startRects.set(memberId, cloneRect(api.getRect()));
     }
@@ -148,11 +149,12 @@ const context: GroupContext = {
     const rects: GroupMemberRect[] = [];
     for (const [memberId, rect] of startRects) rects.push({ id: memberId, rect: cloneRect(rect) });
     emit('move-start', { leaderId: id, source, rects });
+    return 'group';
   },
   constrainPosition: (id, candidate) => {
     const current = session.value;
     const leaderStart = current?.startRects.get(id);
-    if (!current || !leaderStart || !members.has(id)) return candidate;
+    if (!current || current.leaderId !== id || !leaderStart || !members.has(id)) return candidate;
     const deltaLeft = asNumber(candidate.left) - asNumber(leaderStart.left);
     const deltaTop = asNumber(candidate.top) - asNumber(leaderStart.top);
     const edges = members.get(id)?.getAreaEdges();
@@ -169,24 +171,33 @@ const context: GroupContext = {
 
     // Without shared bounds every member clamps against its own start rectangle, so
     // members stop individually at the area edge while the leader keeps moving.
-    if (edges) {
-      for (const [memberId, startRect] of current.startRects) {
-        if (memberId === id) continue;
-        const target = translate(startRect, deltaLeft, deltaTop);
-        const maxLeft = Math.max(edges.minLeft, edges.maxRight - asNumber(startRect.width));
-        const maxTop = Math.max(edges.minTop, edges.maxBottom - asNumber(startRect.height));
-        target.left = clamp(asNumber(target.left), edges.minLeft, maxLeft);
-        target.top = clamp(asNumber(target.top), edges.minTop, maxTop);
-        members.get(memberId)?.translateTo(target);
+    for (const [memberId, startRect] of current.startRects) {
+      if (memberId === id) continue;
+      const member = members.get(memberId);
+      if (!member) continue;
+      const target = translate(startRect, deltaLeft, deltaTop);
+      const memberEdges = member.getAreaEdges();
+      if (memberEdges) {
+        const maxLeft = Math.max(
+          memberEdges.minLeft,
+          memberEdges.maxRight - asNumber(startRect.width)
+        );
+        const maxTop = Math.max(
+          memberEdges.minTop,
+          memberEdges.maxBottom - asNumber(startRect.height)
+        );
+        target.left = clamp(asNumber(target.left), memberEdges.minLeft, maxLeft);
+        target.top = clamp(asNumber(target.top), memberEdges.minTop, maxTop);
       }
+      member.translateTo(target);
     }
     return candidate;
   },
   notifyMoved: (id, leaderRect) => {
     const current = session.value;
     if (!current || current.leaderId !== id) return;
-    const rects: GroupMemberRect[] = toMemberRects(memberRecords(current.startRects)).map(
-      record => (record.id === id ? { id, rect: cloneRect(leaderRect) } : record)
+    const rects: GroupMemberRect[] = toMemberRects(memberRecords(current.startRects)).map(record =>
+      record.id === id ? { id, rect: cloneRect(leaderRect) } : record
     );
     emit('move', { leaderId: id, rects });
   },

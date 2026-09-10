@@ -42,7 +42,7 @@
 import { ref, computed, reactive, watch, type StyleValue } from 'vue';
 import { VueAutoDraggable } from '../packages';
 import { ExtendsAutoDraggable } from '../packages/AutoDraggable/type';
-const autoDraggable = ref<any>([
+const autoDraggable = ref<ExtendsAutoDraggable[]>([
   {
     width: 300,
     height: 150,
@@ -61,7 +61,7 @@ const autoDraggable = ref<any>([
   }
 ]);
 
-const select = ref<any>({});
+const select = ref<Partial<ExtendsAutoDraggable>>({});
 
 const radio = ref<string>('1280x800');
 const context = reactive<{ width: number; height: number }>({
@@ -124,9 +124,7 @@ const resizeStop = (
 const actived = (value: ExtendsAutoDraggable) => {
   select.value = value;
 };
-const inactived = (value: ExtendsAutoDraggable) => {
-  console.log(value);
-};
+const inactived = (_value: ExtendsAutoDraggable) => {};
 </script>
 
 <style scoped lang="scss">

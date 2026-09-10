@@ -27,5 +27,8 @@
     "e2e/**/*.ts",
     "playwright.config.ts"
   ],
+  "vueCompilerOptions": {
+    "strictTemplates": true
+  },
   "references": [{ "path": "./tsconfig.node.json" }]
 }

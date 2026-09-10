@@ -21,6 +21,8 @@ export interface GroupDragSession {
   startRects: Map<string, ExtendsMovableBox>;
 }
 
+export type GroupDragDisposition = 'group' | 'solo' | 'blocked';
+
 /**
  * Contract provided by MovableGroup. MovableBox consumes it optionally, so a box keeps
  * working standalone. All coordinates use the leader's unit space; members are expected
@@ -29,8 +31,10 @@ export interface GroupDragSession {
 export interface GroupContext {
   registerMember: (id: string, api: GroupMemberApi) => void;
   unregisterMember: (id: string) => void;
-  /** Opens a drag session led by id, updating the selection when the leader is unselected. */
-  beginDrag: (id: string, source: PointerEvent) => void;
+  /** Returns whether an id belongs to this group, for excluding internal snap targets. */
+  hasMember: (id: string | undefined) => boolean;
+  /** Opens a group session, permits a solo drag, or blocks a selected concurrent member. */
+  beginDrag: (id: string, source: PointerEvent) => GroupDragDisposition;
   /**
    * Constrains the leader candidate so the union of member rectangles stays inside the
    * area, moves every other selected member to the same offset, and returns the

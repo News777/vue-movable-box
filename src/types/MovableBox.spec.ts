@@ -23,9 +23,10 @@ describe('MovableBox public types', () => {
       label: 'box'
     };
     const extended: ExtendsMovableBox<CustomFields> = model;
-    const props: MovableBoxProps<CustomFields> = { modelValue: model };
+    const props: MovableBoxProps<CustomFields> = { modelValue: model, memberId: 'box' };
 
     expect(extended.label).toBe('box');
     expect(props.modelValue.label).toBe('box');
+    expect(props.memberId).toBe('box');
   });
 });

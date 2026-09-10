@@ -113,19 +113,14 @@ export function removeEvent<K extends keyof HTMLElementEventMap>(
  * 计算保持比例的最大宽高
  * 用于等比缩放时计算最大允许尺寸
  */
-export const figureRatioMax = (
-  wVal: number,
-  hVal: number,
-  w: number,
-  h: number
-): number[] => {
+export const figureRatioMax = (wVal: number, hVal: number, w: number, h: number): number[] => {
   if (w === 0 || h === 0) {
     return [wVal, hVal];
   }
-  
+
   const wRate = wVal / w;
   const hRate = hVal / h;
-  
+
   if (wRate > hRate) {
     return [keepDecimalsToNum(w * hRate), keepDecimalsToNum(hVal)];
   } else {
@@ -142,9 +137,7 @@ export const keepDecimalsToNum = (
   defaultVal: number = 1,
   decimalPlaces: number = DEFAULT_DECIMAL_PLACES
 ): number => {
-  const newVal = new Decimal(val)
-    .toDecimalPlaces(decimalPlaces)
-    .toNumber();
+  const newVal = new Decimal(val).toDecimalPlaces(decimalPlaces).toNumber();
   return valIsNaN(newVal, defaultVal);
 };
 
@@ -156,7 +149,7 @@ export const getParentBounds = (
   limitAreaClass?: string
 ): { parent: HTMLElement | null; rect: DOMRect | null } => {
   const parent = limitAreaClass
-    ? document.querySelector(limitAreaClass) as HTMLElement
+    ? (document.querySelector(limitAreaClass) as HTMLElement)
     : element.parentElement;
 
   if (!parent) {
@@ -189,15 +182,15 @@ export const deepClone = <T>(obj: T): T => {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
-  
+
   if (obj instanceof Date) {
     return new Date(obj.getTime()) as unknown as T;
   }
-  
+
   if (obj instanceof Array) {
     return obj.map(item => deepClone(item)) as unknown as T;
   }
-  
+
   if (obj instanceof Object) {
     const clonedObj = {} as T;
     for (const key in obj) {
@@ -207,20 +200,20 @@ export const deepClone = <T>(obj: T): T => {
     }
     return clonedObj;
   }
-  
+
   return obj;
 };
 
 /**
  * 防抖函数
  */
-export const debounce = <T extends (...args: any[]) => any>(
-  fn: T,
+export const debounce = <Args extends unknown[]>(
+  fn: (...args: Args) => unknown,
   delay: number = 300
-): ((...args: Parameters<T>) => void) => {
+): ((...args: Args) => void) => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  
-  return (...args: Parameters<T>) => {
+
+  return (...args: Args) => {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
@@ -233,13 +226,13 @@ export const debounce = <T extends (...args: any[]) => any>(
 /**
  * 节流函数
  */
-export const throttle = <T extends (...args: any[]) => any>(
-  fn: T,
+export const throttle = <Args extends unknown[]>(
+  fn: (...args: Args) => unknown,
   delay: number = 300
-): ((...args: Parameters<T>) => void) => {
+): ((...args: Args) => void) => {
   let lastTime = 0;
-  
-  return (...args: Parameters<T>) => {
+
+  return (...args: Args) => {
     const now = Date.now();
     if (now - lastTime >= delay) {
       lastTime = now;

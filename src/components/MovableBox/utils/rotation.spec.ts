@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deltaToLocal,
   normalizeAngle,
+  normalizeTransformOrigin,
   resolveTransformOrigin,
   rotatedAABB,
   rotatedAABBAt
@@ -64,12 +65,25 @@ describe('rotation utilities', () => {
     expect(resolveTransformOrigin('bottom', 120, 80)).toEqual({ x: 60, y: 80 });
     expect(resolveTransformOrigin('50% 25%', 120, 80)).toEqual({ x: 60, y: 20 });
     expect(resolveTransformOrigin('10px 20px', 120, 80)).toEqual({ x: 10, y: 20 });
+    expect(resolveTransformOrigin('0 0', 120, 80)).toEqual({ x: 0, y: 0 });
     expect(resolveTransformOrigin('100% 100%', 120, 80)).toEqual({ x: 120, y: 80 });
-    // A third (z) token is ignored; unitless prefixes of other units parse as numbers;
-    // calc() cannot parse and falls back to center.
+    // A third (z) token, unsupported units, and calc() all fall back to center.
     expect(resolveTransformOrigin('50% 50% 5px', 120, 80)).toEqual({ x: 60, y: 40 });
-    expect(resolveTransformOrigin('5rem center', 120, 80)).toEqual({ x: 5, y: 40 });
+    expect(resolveTransformOrigin('left top 5px', 120, 80)).toEqual({ x: 60, y: 40 });
+    expect(resolveTransformOrigin('5rem center', 120, 80)).toEqual({ x: 60, y: 40 });
+    expect(resolveTransformOrigin('10 center', 120, 80)).toEqual({ x: 60, y: 40 });
     expect(resolveTransformOrigin('calc(50%) top', 120, 80)).toEqual({ x: 60, y: 40 });
+  });
+
+  it('rejects token pairs that are not valid CSS transform-origin positions', () => {
+    expect(normalizeTransformOrigin('left top 5px')).toBe('center');
+    expect(normalizeTransformOrigin('left right')).toBe('center');
+    expect(normalizeTransformOrigin('top bottom')).toBe('center');
+    expect(normalizeTransformOrigin('top 10px')).toBe('center');
+    expect(normalizeTransformOrigin('20px left')).toBe('center');
+    expect(normalizeTransformOrigin('left 20px')).toBe('left 20px');
+    expect(normalizeTransformOrigin('20px top')).toBe('20px top');
+    expect(normalizeTransformOrigin('center right')).toBe('center right');
   });
 
   it('shifts the AABB for non-center transform origins and keeps translation equivariant', () => {

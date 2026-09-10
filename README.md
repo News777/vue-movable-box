@@ -44,9 +44,9 @@ npm install vue-movable-box
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { MovableBox } from 'vue-movable-box'
-import 'vue-movable-box/style.css'
+import { ref } from 'vue';
+import { MovableBox } from 'vue-movable-box';
+import 'vue-movable-box/style.css';
 
 const boxConfig = ref({
   left: 100,
@@ -54,14 +54,12 @@ const boxConfig = ref({
   width: 200,
   height: 150,
   zIndex: 1
-})
+});
 </script>
 
 <template>
   <MovableBox v-model="boxConfig">
-    <div class="content">
-      Draggable Content Area
-    </div>
+    <div class="content">Draggable Content Area</div>
   </MovableBox>
 </template>
 ```
@@ -80,59 +78,64 @@ Visit http://localhost:5173 for the interactive demo.
 
 ### Props
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `v-model` | `MovableBoxRect` | required | Bind position and size |
-| `theme` | `string` | `#409EFD` | Theme color (active border) |
-| `inActiveColor` | `string` | `#666666` | Inactive border color |
-| `unitType` | `'px' \| '%'` | `'px'` | Size unit type |
-| `scale` | `number \| string` | `1` | Component scale ratio |
-| `isKeepDecimals` | `boolean` | `false` | Keep decimal places |
-| `decimalPlaces` | `number` | `2` | Decimal places to keep |
-| `draggable` | `boolean` | `true` | Enable dragging |
-| `dragHandle` | `string` | - | CSS selector restricting where a drag can start; when set, only matching elements inside the box start drags |
-| `dragCancel` | `string` | - | CSS selector for elements (e.g. forms, buttons) that must not start a drag |
-| `canDrag` | `(value: MovableBoxRect) => boolean` | - | Called before a drag starts; return `false` to reject the interaction without mutating the model |
-| `canResize` | `(value: MovableBoxRect, handle: HandlePosition) => boolean` | - | Called before a resize starts; return `false` to reject the interaction without mutating the model |
-| `resizable` | `boolean` | `true` | Enable resizing (preferred name) |
-| `resizeable` | `boolean` | `true` | Deprecated alias of `resizable` for backward compatibility |
-| `limitAreaForParent` | `boolean` | `true` | Limit to parent element |
-| `limitAreaClass` | `string` | - | Custom constraint area CSS selector |
-| `maxWidth` | `number \| string` | - | Maximum width |
-| `maxHeight` | `number \| string` | - | Maximum height |
-| `minWidth` | `number \| string` | `0` | Minimum width |
-| `minHeight` | `number \| string` | `0` | Minimum height |
-| `ratioLock` | `boolean` | `false` | Lock aspect ratio when resizing |
-| `active` | `boolean` | `false` | Is active |
-| `disabled` | `boolean` | `false` | Completely disabled |
-| `disabledUserSelect` | `boolean` | `true` | Disable text selection while dragging |
-| `initRect` | `boolean` | `false` | Read-only mode |
-| `handles` | `HandlePosition[]` | all 8 | Visible resize handles |
-| **Grid & Snap** | | | |
-| `snapToGrid` | `boolean` | `false` | Snap to grid |
-| `gridSize` | `number` | `20` | Grid size in the active coordinate unit |
-| `snapToElements` | `boolean` | `false` | Snap to edges or centers in `snapTargets` |
-| `snapThreshold` | `number` | `10` | Element snap threshold |
-| `snapTargets` | `SnapTarget[]` | `[]` | Rectangles of other elements; exclude the current box |
-| `snapFilter` | `(target, axis) => boolean` | `undefined` | Return false to exclude a target from snapping on `horizontal` / `vertical` |
-| `snapPriority` | `('alignment' \| 'spacing')[]` | `['alignment','spacing']` | Strategy consultation order per axis; the first strategy with a candidate inside the threshold wins |
-| `collisionEnabled` | `boolean` | `false` | Detect collisions against `snapTargets` |
-| `allowOverlap` | `boolean` | `false` | Allow a colliding candidate to be committed |
-| **Direction Control** | | | |
-| `dragDirections` | `string[]` | `['top','bottom','left','right']` | Allowed drag directions |
-| `resizeDirections` | `string[]` | all 8 | Allowed resize directions |
-| **Bounds & Margin** | | | |
-| `edgeDistance` | `number` | `0` | Shared inset on all sides |
-| `boundsMargin` | `Object` | `{top:0,right:0,bottom:0,left:0}` | Per-side inset added to `edgeDistance` |
-| **Interaction** | | | |
-| `enableTransition` | `boolean` | `false` | Enable transition animation |
-| `keyboardEnabled` | `boolean` | `false` | Enable keyboard control |
-| `keyboardStep` | `number` | `1` | Step for arrow-key movement and Shift + arrow-key resizing |
+| Prop                  | Type                                                         | Default                           | Description                                                                                                  |
+| --------------------- | ------------------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `v-model`             | `MovableBoxRect`                                             | required                          | Bind position and size                                                                                       |
+| `theme`               | `string`                                                     | `#409EFD`                         | Theme color (active border)                                                                                  |
+| `inActiveColor`       | `string`                                                     | `#666666`                         | Inactive border color                                                                                        |
+| `unitType`            | `'px' \| '%'`                                                | `'px'`                            | Size unit type                                                                                               |
+| `scale`               | `number \| string`                                           | `1`                               | Component scale ratio                                                                                        |
+| `isKeepDecimals`      | `boolean`                                                    | `false`                           | Keep decimal places                                                                                          |
+| `decimalPlaces`       | `number`                                                     | `2`                               | Decimal places to keep                                                                                       |
+| `draggable`           | `boolean`                                                    | `true`                            | Enable dragging                                                                                              |
+| `dragHandle`          | `string`                                                     | -                                 | CSS selector restricting where a drag can start; when set, only matching elements inside the box start drags |
+| `dragCancel`          | `string`                                                     | -                                 | CSS selector for elements (e.g. forms, buttons) that must not start a drag                                   |
+| `canDrag`             | `(value: MovableBoxRect) => boolean`                         | -                                 | Called before a drag starts; return `false` to reject the interaction without mutating the model             |
+| `canResize`           | `(value: MovableBoxRect, handle: HandlePosition) => boolean` | -                                 | Called before a resize starts; return `false` to reject the interaction without mutating the model           |
+| `resizable`           | `boolean`                                                    | `true`                            | Enable resizing (preferred name)                                                                             |
+| `resizeable`          | `boolean`                                                    | `true`                            | Deprecated alias of `resizable` for backward compatibility                                                   |
+| `limitAreaForParent`  | `boolean`                                                    | `true`                            | Limit to parent element                                                                                      |
+| `limitAreaClass`      | `string`                                                     | -                                 | Custom constraint area CSS selector                                                                          |
+| `maxWidth`            | `number \| string`                                           | -                                 | Maximum width                                                                                                |
+| `maxHeight`           | `number \| string`                                           | -                                 | Maximum height                                                                                               |
+| `minWidth`            | `number \| string`                                           | `0`                               | Minimum width                                                                                                |
+| `minHeight`           | `number \| string`                                           | `0`                               | Minimum height                                                                                               |
+| `ratioLock`           | `boolean`                                                    | `false`                           | Lock aspect ratio when resizing                                                                              |
+| `active`              | `boolean`                                                    | `false`                           | Is active                                                                                                    |
+| `disabled`            | `boolean`                                                    | `false`                           | Completely disabled                                                                                          |
+| `disabledUserSelect`  | `boolean`                                                    | `true`                            | Disable text selection while dragging                                                                        |
+| `initRect`            | `boolean`                                                    | `false`                           | Read-only mode                                                                                               |
+| `handles`             | `HandlePosition[]`                                           | all 8                             | Visible resize handles                                                                                       |
+| `memberId`            | `string`                                                     | auto-generated                    | Stable identifier used inside `MovableGroup`                                                                 |
+| `rotate`              | `number \| string`                                           | `0`                               | Clockwise rotation angle in degrees                                                                          |
+| `rotatable`           | `boolean`                                                     | `false`                           | Show an interactive rotation handle while active                                                             |
+| `rotationHandleOffset` | `number`                                                    | `28`                              | Non-negative screen-space distance in pixels from the box to the rotation handle                              |
+| `transformOrigin`     | `string`                                                     | `center`                          | Transform-origin subset used consistently by CSS and geometry                                                |
+| **Grid & Snap**       |                                                              |                                   |                                                                                                              |
+| `snapToGrid`          | `boolean`                                                    | `false`                           | Snap to grid                                                                                                 |
+| `gridSize`            | `number`                                                     | `20`                              | Grid size in the active coordinate unit                                                                      |
+| `snapToElements`      | `boolean`                                                    | `false`                           | Snap to edges or centers in `snapTargets`                                                                    |
+| `snapThreshold`       | `number`                                                     | `10`                              | Element snap threshold                                                                                       |
+| `snapTargets`         | `SnapTarget[]`                                               | `[]`                              | Rectangles of other elements; inside a group, use `id: memberId` so member targets are excluded               |
+| `snapFilter`          | `(target, axis) => boolean`                                  | `undefined`                       | Return false to exclude a target from snapping on `horizontal` / `vertical`                                  |
+| `snapPriority`        | `('alignment' \| 'spacing')[]`                               | `['alignment','spacing']`         | Strategy consultation order per axis; the first strategy with a candidate inside the threshold wins          |
+| `collisionEnabled`    | `boolean`                                                    | `false`                           | Detect collisions against `snapTargets`                                                                      |
+| `allowOverlap`        | `boolean`                                                    | `false`                           | Allow a colliding candidate to be committed                                                                  |
+| **Direction Control** |                                                              |                                   |                                                                                                              |
+| `dragDirections`      | `string[]`                                                   | `['top','bottom','left','right']` | Allowed drag directions                                                                                      |
+| `resizeDirections`    | `string[]`                                                   | all 8                             | Allowed resize directions                                                                                    |
+| **Bounds & Margin**   |                                                              |                                   |                                                                                                              |
+| `edgeDistance`        | `number`                                                     | `0`                               | Shared inset on all sides                                                                                    |
+| `boundsMargin`        | `Object`                                                     | `{top:0,right:0,bottom:0,left:0}` | Per-side inset added to `edgeDistance`                                                                       |
+| **Interaction**       |                                                              |                                   |                                                                                                              |
+| `enableTransition`    | `boolean`                                                    | `false`                           | Enable transition animation                                                                                  |
+| `keyboardEnabled`     | `boolean`                                                    | `false`                           | Enable keyboard control                                                                                      |
+| `keyboardStep`        | `number`                                                     | `1`                               | Step for arrow-key movement and Shift + arrow-key resizing                                                   |
 
 #### HandlePosition Type
 
 ```ts
-type HandlePosition = 'tl' | 'tm' | 'tr' | 'ml' | 'mr' | 'bl' | 'bm' | 'br'
+type HandlePosition = 'tl' | 'tm' | 'tr' | 'ml' | 'mr' | 'bl' | 'bm' | 'br';
 // tl: top-left, tm: top-middle, tr: top-right
 // ml: middle-left, mr: middle-right
 // bl: bottom-left, bm: bottom-middle, br: bottom-right
@@ -142,62 +145,67 @@ type HandlePosition = 'tl' | 'tm' | 'tr' | 'ml' | 'mr' | 'bl' | 'bm' | 'br'
 
 ```ts
 interface MovableBoxRect {
-  left: number | string
-  top: number | string
-  width: number | string
-  height: number | string
-  zIndex?: number
+  left: number | string;
+  top: number | string;
+  width: number | string;
+  height: number | string;
+  zIndex?: number;
 }
 ```
 
 ### Events
 
-| Event | Parameters | Description |
-|-------|------------|-------------|
-| `update:modelValue` | `(value: MovableBoxRect)` | Emitted on v-model update |
-| `drag-start` | `(event: PointerEvent, value: MovableBoxRect)` | Drag start |
-| `drag` | `(value: MovableBoxRect)` | During drag (throttled) |
-| `drag-stop` | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | Drag stop |
-| `resize-start` | `(event: PointerEvent, value: MovableBoxRect)` | Resize start |
-| `resize` | `(value: MovableBoxRect)` | During resize (throttled) |
-| `resize-stop` | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | Resize stop |
-| `drag-cancel` | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | Drag cancelled (Escape, pointercancel, or `cancelInteraction()`); the rectangle is restored and `newValue` equals `oldValue`. `drag-stop` is not emitted |
-| `resize-cancel` | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | Resize cancelled; same semantics as `drag-cancel` |
-| `active` | `(value: MovableBoxRect)` | Component activated |
-| `inactive` | `(value: MovableBoxRect)` | Component deactivated |
-| `disabled` | `(value: boolean)` | Disabled state changed |
-| `dblclick` | `(event: MouseEvent)` | Double click |
-| `out-of-bounds` | `(direction: 'left' \| 'top' \| 'right' \| 'bottom')` | Out of bounds |
-| `move` | `(value: MovableBoxRect)` | Deprecated alias of `drag` for backward compatibility |
-| `snap` | `(value: SnapEventPayload)` | Snap state, point, or target changed |
-| `guides` | `(value: GuidesEventPayload)` | Snap target or guide coordinates changed |
-| `collision` | `(value: CollisionEventPayload)` | Collision state, direction, or target changed |
+| Event               | Parameters                                                                   | Description                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `update:modelValue` | `(value: MovableBoxRect)`                                                    | Emitted on v-model update                                                                                                                                |
+| `update:rotate`     | `(value: number)`                                                            | Emitted for `v-model:rotate` while rotating                                                                                                              |
+| `drag-start`        | `(event: PointerEvent, value: MovableBoxRect)`                               | Drag start                                                                                                                                               |
+| `drag`              | `(value: MovableBoxRect)`                                                    | During drag (throttled)                                                                                                                                  |
+| `drag-stop`         | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)`  | Drag stop                                                                                                                                                |
+| `resize-start`      | `(event: PointerEvent, value: MovableBoxRect)`                               | Resize start                                                                                                                                             |
+| `resize`            | `(value: MovableBoxRect)`                                                    | During resize (throttled)                                                                                                                                |
+| `resize-stop`       | `(event: PointerEvent, oldValue: MovableBoxRect, newValue: MovableBoxRect)`  | Resize stop                                                                                                                                              |
+| `drag-cancel`       | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | Drag cancelled (Escape, pointercancel, or `cancelInteraction()`); the rectangle is restored and `newValue` equals `oldValue`. `drag-stop` is not emitted |
+| `resize-cancel`     | `(event: Event \| null, oldValue: MovableBoxRect, newValue: MovableBoxRect)` | Resize cancelled; same semantics as `drag-cancel`                                                                                                        |
+| `rotate-start`      | `(event: Event, value: number)`                                              | Rotation handle interaction started                                                                                                                      |
+| `rotate`            | `(value: number)`                                                            | Rotation angle changed (throttled for pointer input)                                                                                                     |
+| `rotate-stop`       | `(event: Event, oldValue: number, newValue: number)`                         | Rotation handle interaction finished                                                                                                                     |
+| `rotate-cancel`     | `(event: Event \| null, oldValue: number, newValue: number)`                 | Rotation cancelled; the angle is restored to `oldValue` and `rotate-stop` is not emitted                                                                  |
+| `active`            | `(value: MovableBoxRect)`                                                    | Component activated                                                                                                                                      |
+| `inactive`          | `(value: MovableBoxRect)`                                                    | Component deactivated                                                                                                                                    |
+| `disabled`          | `(value: boolean)`                                                           | Disabled state changed                                                                                                                                   |
+| `dblclick`          | `(event: MouseEvent)`                                                        | Double click                                                                                                                                             |
+| `out-of-bounds`     | `(direction: 'left' \| 'top' \| 'right' \| 'bottom')`                        | Out of bounds                                                                                                                                            |
+| `move`              | `(value: MovableBoxRect)`                                                    | Deprecated alias of `drag` for backward compatibility                                                                                                    |
+| `snap`              | `(value: SnapEventPayload)`                                                  | Snap state, point, or target changed                                                                                                                     |
+| `guides`            | `(value: GuidesEventPayload)`                                                | Snap target or guide coordinates changed                                                                                                                 |
+| `collision`         | `(value: CollisionEventPayload)`                                             | Collision state, direction, or target changed                                                                                                            |
 
 Interactive changes are resolved in this order: direction filtering → grid snap → element snap → bounds → collision. Advanced events are emitted only when their state changes. Targets, grid size, thresholds, and insets use the coordinate unit selected by `unitType`; with `unitType="%"`, values are percentage points.
 
-Forced aborts are not cancellations: setting `disabled` or `initRect`, or `active` becoming `false`, ends an in-progress interaction where it stands — the rectangle is not restored and no cancel events are emitted. Only the explicit cancellation paths (Escape, `pointercancel`, lost pointer capture, `cancelInteraction()`) restore the pre-interaction rectangle and emit `drag-cancel` / `resize-cancel`.
+Forced aborts are not cancellations: setting `disabled` or `initRect`, or `active` becoming `false`, ends an in-progress interaction where it stands — values are not restored and no cancel events are emitted. Only the explicit cancellation paths (Escape, `pointercancel`, lost pointer capture, `cancelInteraction()`) restore the pre-interaction value and emit `drag-cancel`, `resize-cancel`, or `rotate-cancel`.
 
 ```ts
 interface SnapEventPayload {
-  snapped: boolean
-  point?: SnapPoint // deprecated single-point alias
-  points?: SnapPoint[]
-  targetId?: string
+  snapped: boolean;
+  point?: SnapPoint; // deprecated single-point alias
+  points?: SnapPoint[];
+  targetId?: string;
   targetIds?: {
-    horizontal?: string
-    vertical?: string
-  }
+    horizontal?: string;
+    vertical?: string;
+  };
 }
 
 interface GuidesEventPayload {
-  vertical: number[]
-  horizontal: number[]
+  vertical: number[];
+  horizontal: number[];
 }
 
 interface CollisionEventPayload {
-  colliding: boolean
-  direction?: 'left' | 'right' | 'top' | 'bottom'
-  targetId?: string
+  colliding: boolean;
+  direction?: 'left' | 'right' | 'top' | 'bottom';
+  targetId?: string;
 }
 ```
 
@@ -217,9 +225,11 @@ focus outline using the theme color:
   support both axes) and `Shift` inverts the direction. Edge handles expose `role="separator"`,
   orientation, current/minimum/maximum size, and keyboard shortcuts. Corner handles expose
   `role="group"` with a two-axis resize description. Every handle has a descriptive label.
-- `Escape` cancels an in-progress drag or resize — the rectangle is restored to its
-  pre-interaction state and `drag-cancel` / `resize-cancel` are emitted instead of
-  `drag-stop` / `resize-stop`. When idle and the box is active, `Escape` deactivates it.
+- When the rotation handle is focused, Left/Right rotate by `keyboardStep`, Shift uses a 10x
+  step, and Home resets the angle to 0°.
+- `Escape` cancels an in-progress drag, resize, or rotation — the previous value is restored and
+  the matching cancel event is emitted instead of its stop event. When idle and the box is
+  active, `Escape` deactivates it.
 
 Without `keyboardEnabled`, handles stay unfocusable and arrow keys have no effect; `Escape` still
 cancels in-progress pointer interactions.
@@ -237,35 +247,35 @@ Called via `ref`:
 </template>
 
 <script setup>
-const boxRef = ref()
+const boxRef = ref();
 
 // Get current config
-boxRef.value.getConfig()
+boxRef.value.getConfig();
 
 // Set position
-boxRef.value.setPosition(100, 100)
+boxRef.value.setPosition(100, 100);
 
 // Set size
-boxRef.value.setSize(300, 200)
+boxRef.value.setSize(300, 200);
 
 // Reset to the initial model
-boxRef.value.reset()
+boxRef.value.reset();
 
 // Activate
-boxRef.value.activate()
+boxRef.value.activate();
 
 // Deactivate
-boxRef.value.deactivate()
+boxRef.value.deactivate();
 
-// Cancel an in-progress drag/resize and restore the pre-interaction rectangle
-boxRef.value.cancelInteraction()
+// Cancel an in-progress drag/resize/rotation and restore its previous value
+boxRef.value.cancelInteraction();
 </script>
 ```
 
 ### Slots
 
-| Slot | Description |
-|------|-------------|
+| Slot      | Description            |
+| --------- | ---------------------- |
 | `default` | Component content area |
 
 ## Advanced Usage
@@ -273,47 +283,29 @@ boxRef.value.cancelInteraction()
 ### Custom Theme Color
 
 ```vue
-<MovableBox 
-  v-model="config"
-  theme="#ff6b6b"
-  inActiveColor="#ccc"
-/>
+<MovableBox v-model="config" theme="#ff6b6b" inActiveColor="#ccc" />
 ```
 
 ### Using Percentage Units
 
 ```vue
-<MovableBox 
-  v-model="config"
-  unit-type="%"
-  :max-width="100"
-  :max-height="100"
-/>
+<MovableBox v-model="config" unit-type="%" :max-width="100" :max-height="100" />
 ```
 
 ### Lock Aspect Ratio
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :ratio-lock="true"
-/>
+<MovableBox v-model="config" :ratio-lock="true" />
 ```
 
 ### Custom Resize Handles
 
 ```vue
 <!-- Show only bottom-right handle -->
-<MovableBox 
-  v-model="config"
-  :handles="['br']"
-/>
+<MovableBox v-model="config" :handles="['br']" />
 
 <!-- Show four corners only -->
-<MovableBox 
-  v-model="config"
-  :handles="['tl', 'tr', 'bl', 'br']"
-/>
+<MovableBox v-model="config" :handles="['tl', 'tr', 'bl', 'br']" />
 ```
 
 ### Constrain to Custom Area
@@ -334,11 +326,7 @@ boxRef.value.cancelInteraction()
 ### Grid Snap
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :snap-to-grid="true"
-  :grid-size="20"
-/>
+<MovableBox v-model="config" :snap-to-grid="true" :grid-size="20" />
 ```
 
 ### Element Snap and Collision
@@ -389,23 +377,23 @@ nearest candidate inside `snapThreshold` wins inside a strategy, and equal dista
 ### Rotation and Transform Origin
 
 ```vue
-<MovableBox
-  v-model="config"
-  :rotate="45"
-  transform-origin="center"
-/>
+<MovableBox v-model="config" v-model:rotate="angle" rotatable transform-origin="center" />
 ```
 
 `rotate` accepts degrees (clockwise, CSS `rotate()` semantics). `transformOrigin` accepts a CSS
-transform-origin subset: one or two tokens of keywords (`left` / `center` / `right` /
-`top` / `bottom`), percentages, or lengths parsed by their numeric prefix (e.g. `'center'`,
-`'top left'`, `'50% 25%'`, `'10px 20px'`); extra tokens are ignored, and unparsable values
-such as `calc()` fall back to the center. Resizing under rotation maps pointer and keyboard
-deltas into the box's local space (rotation by the inverse angle), so a handle grows or shrinks
+transform-origin subset: valid one- or two-token positions using keywords (`left` / `center` / `right` /
+`top` / `bottom`), percentages, or `px` lengths (e.g. `'center'`,
+`'top left'`, `'50% 25%'`, `'10px 20px'`). Extra tokens and unparsable values such as
+`calc()` are invalid and fall back to the center. Resizing under rotation maps pointer and
+keyboard deltas into the box's local space (rotation by the inverse angle), so a handle grows or shrinks
 along its rotated edge. The handle itself follows an incremental local-space model rather than
 an exact inverse-kinematic anchor: with large rotations the on-screen handle displacement
 differs from the pointer path, while min/max, ratio lock, bounds, and collision constraints
 keep their documented meaning.
+
+Set `rotatable` to show the rotation handle. Dragging it updates `v-model:rotate`; with
+`keyboardEnabled`, focus the handle and use Left/Right to rotate by `keyboardStep`, Shift for a
+10x step, or Home to reset to 0°.
 
 Rotated geometry semantics (defined in 3.0.0):
 
@@ -423,19 +411,16 @@ Rotated geometry semantics (defined in 3.0.0):
 - Translation (pointer drag, keyboard move, group movement) is unaffected by rotation.
 - Snap guides render inside the box element and rotate with it, so with `rotate != 0` the dashed
   guide lines may not sit exactly on the target edges.
-- Rotation geometry assumes `px` units; with `%` units the AABB math operates in percentage space
-  as an approximation.
+- With `unitType="%"`, AABB calculations convert the rectangle and px transform origin to the
+  parent's pixel space before converting the result back to percentage points. Rotated resize
+  input deltas continue to use the component's percentage-coordinate approximation.
 
 Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
 
 ### Keyboard Control
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :keyboard-enabled="true"
-  :keyboard-step="5"
-/>
+<MovableBox v-model="config" :keyboard-enabled="true" :keyboard-step="5" />
 <!-- 
   Arrow keys ↑↓←→ to move
   Escape to deactivate
@@ -446,22 +431,16 @@ Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
 
 ```vue
 <!-- Horizontal drag only, no vertical -->
-<MovableBox 
-  v-model="config"
-  :drag-directions="['left', 'right']"
-/>
+<MovableBox v-model="config" :drag-directions="['left', 'right']" />
 
 <!-- Show only horizontal resize handles -->
-<MovableBox 
-  v-model="config"
-  :resize-directions="['ml', 'mr']"
-/>
+<MovableBox v-model="config" :resize-directions="['ml', 'mr']" />
 ```
 
 ### Boundary Margin
 
 ```vue
-<MovableBox 
+<MovableBox
   v-model="config"
   :edge-distance="20"
   :bounds-margin="{ top: 10, right: 10, bottom: 10, left: 10 }"
@@ -471,10 +450,7 @@ Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
 ### Transition Animation
 
 ```vue
-<MovableBox 
-  v-model="config"
-  :enable-transition="true"
-/>
+<MovableBox v-model="config" :enable-transition="true" />
 ```
 
 ### Event Listeners Example
@@ -482,17 +458,17 @@ Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
 ```vue
 <script setup>
 const handleDragStart = (e, value) => {
-  console.log('Drag started', value)
-}
+  console.log('Drag started', value);
+};
 
 const handleDragStop = (e, oldVal, newVal) => {
-  console.log('Drag stopped', { old: oldVal, new: newVal })
-}
+  console.log('Drag stopped', { old: oldVal, new: newVal });
+};
 
-const handleOutOfBounds = (direction) => {
-  console.log('Out of bounds:', direction)
+const handleOutOfBounds = direction => {
+  console.log('Out of bounds:', direction);
   // direction: 'left' | 'top' | 'right' | 'bottom'
-}
+};
 </script>
 
 <template>
@@ -509,21 +485,21 @@ const handleOutOfBounds = (direction) => {
 
 ```vue
 <script setup>
-import { ref } from 'vue'
+import { ref } from 'vue';
 
 const boxes = ref([
-  { id: 1, config: { left: 50, top: 50, width: 200, height: 150, zIndex: 1 }},
-  { id: 2, config: { left: 300, top: 100, width: 200, height: 150, zIndex: 2 }}
-])
+  { id: 1, config: { left: 50, top: 50, width: 200, height: 150, zIndex: 1 } },
+  { id: 2, config: { left: 300, top: 100, width: 200, height: 150, zIndex: 2 } }
+]);
 
-const activeId = ref(null)
+const activeId = ref(null);
 
 const handleActive = (box, rect) => {
   // Update zIndex on activation
-  const maxZ = Math.max(...boxes.value.map(b => b.config.zIndex))
-  box.config.zIndex = maxZ + 1
-  activeId.value = box.id
-}
+  const maxZ = Math.max(...boxes.value.map(b => b.config.zIndex));
+  box.config.zIndex = maxZ + 1;
+  activeId.value = box.id;
+};
 </script>
 
 <template>
@@ -549,32 +525,27 @@ replaces the selection. Give each member a stable `memberId`.
 
 ```vue
 <script setup>
-import { ref } from 'vue'
-import { MovableBox, MovableGroup } from 'vue-movable-box'
+import { ref } from 'vue';
+import { MovableBox, MovableGroup } from 'vue-movable-box';
 
 const rects = ref({
   a: { left: 20, top: 20, width: 140, height: 90 },
   b: { left: 220, top: 70, width: 140, height: 90 }
-})
-const selected = ref(['a', 'b'])
+});
+const selected = ref(['a', 'b']);
 
-const onMoveStop = (payload) => {
+const onMoveStop = payload => {
   // Immutable batch payload: apply the whole formation atomically.
   for (const record of payload.rects) {
-    console.log(record.id, record.startRect, '->', record.rect)
+    console.log(record.id, record.startRect, '->', record.rect);
   }
-}
+};
 </script>
 
 <template>
   <div class="canvas">
     <MovableGroup v-model:selected="selected" @move-stop="onMoveStop">
-      <MovableBox
-        v-for="(rect, id) in rects"
-        :key="id"
-        :member-id="id"
-        v-model="rects[id]"
-      />
+      <MovableBox v-for="(rect, id) in rects" :key="id" :member-id="id" v-model="rects[id]" />
     </MovableGroup>
   </div>
 </template>
@@ -593,8 +564,9 @@ Group semantics:
 - Forced aborts (e.g. `disabled` toggled mid-drag) end the session without restore, matching
   single-box semantics; the same applies when the leader unmounts mid-drag — other members keep
   their current position.
-- A second concurrent pointer cannot hijack an active session: it drags its own box solo and the
-  running formation is untouched.
+- A second concurrent pointer cannot hijack an active session. An unselected member may drag
+  solo; a member already in the active formation rejects the second interaction so the formation
+  remains untouched.
 - Group geometry uses unrotated member rectangles; with `rotate != 0` on members the clamping
   treats the rectangle as its unrotated form, so a rotated member's visual AABB may extend past
   the area edge by its rotation overhang.
@@ -605,13 +577,13 @@ Group semantics:
 Full TypeScript type support:
 
 ```ts
-import { 
-  MovableBox, 
+import {
+  MovableBox,
   type MovableBoxProps,
   type MovableBoxRect,
   type ExtendsMovableBox,
-  type HandlesSet 
-} from 'vue-movable-box'
+  type HandlesSet
+} from 'vue-movable-box';
 
 // Use types
 const config: MovableBoxRect = {
@@ -620,19 +592,19 @@ const config: MovableBoxRect = {
   width: 200,
   height: 150,
   zIndex: 1
-}
+};
 ```
 
 ## Browser Support
 
-| Browser | Minimum Version |
-|---------|----------------|
-| Chrome | >= 88 |
-| Firefox | >= 85 |
-| Safari | >= 14 |
-| Edge | >= 88 |
-| iOS Safari | >= 14 |
-| Android Chrome | >= 88 |
+| Browser        | Minimum Version |
+| -------------- | --------------- |
+| Chrome         | >= 88           |
+| Firefox        | >= 85           |
+| Safari         | >= 14           |
+| Edge           | >= 88           |
+| iOS Safari     | >= 14           |
+| Android Chrome | >= 88           |
 
 ## Project Structure
 
@@ -644,8 +616,7 @@ vue-movable-box/
 │   │   └── MovableBox.ts        # Type definitions
 │   └── components/
 │       └── MovableBox/
-│           ├── MovableBox.vue   # Main component
-│           ├── style.scss       # Styles
+│           ├── MovableBox.vue   # Main component and scoped styles
 │           └── utils.ts         # Utility functions
 ├── examples/                    # Example code
 │   ├── App.vue                  # Full demo
