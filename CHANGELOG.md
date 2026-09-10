@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- 更新项目计划书，明确 v3.2.0 集中修复旋转碰撞及其它已确认问题，并规划 v3.3.0–v3.5.0 的新增能力、任务状态、依赖关系和验收标准；计划功能尚未实现
+
 ## [3.1.0] - 2026-09-10
 
 ### Added

@@ -1,107 +1,227 @@
 # VueMovableBox Roadmap / 项目规划
 
-This roadmap describes the intended development direction. Version contents may be adjusted based
-on implementation findings and user feedback; completed work is recorded in `CHANGELOG.md`.
+本计划覆盖 v3.2.0–v3.5.0，当前仓库版本为 v3.1.0。所有已确认缺陷集中在下一个版本
+v3.2.0 修复；v3.3.0–v3.5.0 安排新增能力、性能增强与稳定性建设。
 
-本规划用于说明项目的预期演进方向。具体版本内容可根据实现验证和用户反馈调整；已经完成的改动以
-`CHANGELOG.md` 为准。
+This roadmap tracks planned work through v3.5.0. All confirmed fixes are assigned to v3.2.0;
+later milestones cover new capabilities, performance, and release readiness. Planned APIs below
+are not yet available. Completed changes belong in [CHANGELOG.md](CHANGELOG.md).
 
-## 2.0.0 — Interaction foundation / 交互基础能力
+## 1. 状态与执行规则
 
-The next release focuses on consistent input behavior and accessibility before expanding the
-geometry model.
+- **待开发**：尚未开始实现；文档中的拟定 API 不代表当前已支持。
+- **开发中**：已经开始实现，但尚未满足该项全部验收条件。
+- **已验证**：实现、回归测试、示例和相关文档均完成，并记录验证命令与结果。
+- 当前所有未来版本任务均为待开发；历史版本摘要不代表未来任务已经完成。
+- 每项任务通过稳定编号跟踪，更新状态时附上验证记录；版本发布前逐项核对。
+- `CHANGELOG.md` 仅记录实际完成的改动，不提前把计划功能写成已发布能力。
+- 行为改动必须提供就近测试；公开接口变动同步更新中英文 README、类型声明和示例。
+- 生成产物 `lib/` 只能通过构建更新，不手工修改。
 
-下一版本优先完善输入一致性和可访问性，为后续多选、组合与旋转能力打好基础。
+## 2. v3.2.0 — 集中修复版本
 
-### Planned scope / 计划范围
+**版本状态：待开发。最高优先级：旋转矩形碰撞。**
 
-- Replace separate mouse and touch interaction paths with Pointer Events.
-  使用 Pointer Events 统一鼠标、触摸和触控笔交互。
-- Use pointer capture and handle `pointercancel` and lost capture without leaving stale listeners or
-  interaction state.
-  使用指针捕获，并正确处理取消和捕获丢失，避免残留监听器或交互状态。
-- Add configurable drag handles and cancellation areas so interactive content inside a box does not
-  start a drag unintentionally.
-  增加可配置的拖拽触发区域和排除区域，避免方框内的表单、按钮等内容误触发拖拽。
-- Add keyboard resizing, visible focus states, and accessible semantics for resize handles.
-  支持键盘调整尺寸、清晰的焦点样式以及调整手柄的无障碍语义。
-- Add an explicit interaction cancellation path that restores the pre-interaction rectangle and
-  distinguishes cancellation from successful completion.
-  增加显式取消交互能力，恢复交互前的矩形，并区分取消与正常完成。
-- Add lifecycle guards for drag and resize so applications can reject an interaction before it
-  starts without mutating the model.
-  增加拖拽与缩放的前置守卫，允许业务在不修改模型的情况下拒绝交互。
+### 2.1 问题清单与修复范围
 
-### Acceptance criteria / 验收标准
+| 编号 | 优先级 | 问题 | 修复要求 | 状态 |
+| --- | --- | --- | --- | --- |
+| FIX-01 | P1 | 旋转碰撞误报、漏检及交互约束不完整 | 双方真实旋转矩形参与计算，统一平移、缩放、旋转的连续碰撞约束 | 待开发 |
+| FIX-02 | P1 | 组合成员旋转后可能越界 | 共享边界使用视觉包围盒并集，独立边界使用各成员自身视觉矩形 | 待开发 |
+| FIX-03 | P2 | 旋转辅助线随方框旋转而偏离目标 | 使用不随方框旋转的呈现层，处理缩放、滚动及百分比坐标 | 待开发 |
+| FIX-04 | P2 | 百分比旋转缩放混用两轴百分点 | 在像素空间转换指针位移与旋转坐标，再转换回模型单位 | 待开发 |
+| FIX-05 | P1 | 浏览器全局安装和 CommonJS 入口失效 | 修复全局安装路径与 CJS 导出，保留 ESM 和现有 UMD 文件地址 | 待开发 |
+| FIX-06 | P2 | 包版本与运行时导出版本不同步 | 使用包元数据作为单一版本来源，删除手写版本漂移来源 | 待开发 |
+| FIX-07 | P2 | 未启用或无需执行的吸附策略仍参与计算 | 按配置惰性求值，保持既有优先级与同距离候选选择规则 | 待开发 |
+| FIX-08 | P2 | 发布验证未覆盖实际消费包 | 增加 tarball 消费测试并接入 CI，验证组件、插件、CSS、类型和版本 | 待开发 |
 
-- Existing mouse, touch, grid, snapping, collision, bounds, percentage-unit, and compatibility
-  behavior remains covered by regression tests.
-  现有鼠标、触摸、网格、吸附、碰撞、边界、百分比单位和兼容行为均有回归测试保护。
-- Pointer, keyboard, cancellation, and focus behavior have observable component tests.
-  指针、键盘、取消和焦点行为均具备可观察的组件测试。
-- Public props, events, exposed methods, README examples, and declarations remain fully typed.
-  公开属性、事件、暴露方法、README 示例和声明文件保持完整类型支持。
-- `pnpm test`, `pnpm type-check`, and `pnpm build` pass before release.
-  发布前通过 `pnpm test`、`pnpm type-check` 和 `pnpm build`。
+### 2.2 FIX-01：旋转碰撞依据与实现要求
 
-### Not included / 暂不纳入
+2026-09-10 的本地源码检查确认：
 
-Multi-selection, group transforms, and rotation are intentionally deferred so the input refactor
-does not also change the component's geometry model.
+- 移动方框通过 `geometryProbe` 转为旋转后的 AABB，目标方框仍按未旋转矩形参与碰撞。
+- 目标类型没有声明旋转角度与变换原点；即使运行时附带这些字段，现有碰撞算法也不读取。
+- 滑动解析按水平、垂直方向拆分，无法正确表达旋转边缘的切线方向。
+- 指针旋转和键盘旋转直接提交角度，没有经过碰撞约束。
 
-多选、组合变换和旋转暂不纳入本版本，避免输入层重构与几何模型改造同时进行。
+对应实现位于 `src/components/MovableBox/MovableBox.vue`、
+`src/components/MovableBox/composables/useCollision.ts` 和
+`src/components/MovableBox/utils/collision.ts`。
 
-## 2.1.0 — Selection and groups / 多选与组合
+**已复现的最小案例：**
 
-> Shipped in v2.1.0 (2026-09-09) via the renderless `MovableGroup` component; see `CHANGELOG.md`.
-> Performance baseline recorded with `pnpm bench` (desktop Chromium, 2026-09-09): dragging a
-> single box among 1,000 stays at ~60 fps; moving a fully-selected 1,000-member formation commits
-> every member per frame and averages ~60 ms/frame — batched DOM writes (transform-based group
-> rendering) remain future work for the spatial-index decision.
+1. 误报：`{ left: 0, top: 0, width: 100, height: 100 }` 绕中心旋转 45°，与
+   `{ left: -20, top: -20, width: 5, height: 5 }` 的真实轮廓分离，但现有 AABB 判断返回碰撞。
+2. 漏检：目标为上述旋转 45° 的 100×100 方框，移动方框为
+   `{ left: 110, top: 45, width: 5, height: 10 }`，真实轮廓相交，但现有算法忽略目标角度后返回无碰撞。
 
-- Introduce a separate `MovableGroup` or scene-level controller instead of adding group ownership to
-  each `MovableBox`.
-  通过独立的 `MovableGroup` 或场景控制器实现多选，避免让单个 `MovableBox` 承担组管理职责。
-- Support group movement, shared bounds, activation, and immutable batch updates.
-  支持组合移动、共享边界、激活状态以及不可变批量更新。
-- Define deterministic snapping and collision behavior between groups and individual boxes.
-  明确组合与单个方框之间可预测的吸附和碰撞规则。
-- Add performance scenarios for 100, 500, and 1,000 boxes before selecting a spatial-index strategy.
-  在选择空间索引方案前，建立 100、500 和 1,000 个方框的性能基准。
+**实现要求：**
 
-## 2.2.0 — Advanced snapping / 增强吸附
+- 建立统一像素坐标下的旋转矩形模型，双方均包含位置、尺寸、角度和变换原点。
+  百分比数据先转换为像素，提交结果时再转换回原单位。
+- AABB 仅用于筛选候选，再按真实旋转矩形执行精确相交判断；仅边缘接触不算重叠。
+- 平移使用连续碰撞检测，求最早接触位置；贴边移动按接触面的切线处理，覆盖高速拖动、
+  斜向移动和多个障碍物。
+- 缩放和旋转也检测整个变化路径，不能只检查结束状态；旋转路径不能直接套用固定角度的
+  平移求解。参考 [Box2D 连续碰撞说明](https://box2d.org/documentation/md_collision.html)。
+- 初始重叠时允许逐步脱离，禁止增加既有穿透或进入新的障碍物；无法求得安全结果时保留
+  最后安全状态。
+- 碰撞解析后重新核对边界、取整结果、吸附状态和辅助线，确保视觉结果与事件一致。
+- 外部直接修改模型仍视为业务输入，不自动反向改写父组件数据；文档区分交互约束与外部赋值。
 
-> Shipped in v2.2.0 (2026-09-09): equal-spacing guides with the `spacing` snap payload,
-> per-axis `snapFilter`, and deterministic `snapPriority` strategy ordering; see `CHANGELOG.md`.
+### 2.3 拟定接口与兼容性
 
-- Support equal-spacing guides and configurable snap strategies.
-  支持等间距辅助线和可配置吸附策略。
-- Allow applications to filter or prioritize snap targets without rebuilding component internals.
-  允许业务过滤目标或调整目标优先级，而无需改动组件内部实现。
-- Keep guide and snap event payloads deterministic when multiple targets compete.
-  多个目标竞争时，保持辅助线与吸附事件载荷稳定、可预测。
+以下接口均属于待开发范围：
 
-## 3.0.0 — Transform model / 变换模型
+- `SnapTarget` 增加可选 `rotate`、`transformOrigin`，默认分别为 `0`、`center`；
+  示例必须传递目标真实变换信息。目标坐标使用与当前方框一致的容器坐标系及单位。
+- 新增 `collisionMode: 'precise' | 'aabb'`，默认 `precise`；`aabb` 提供旧行为迁移入口。
+- 保留碰撞事件原有字段，增加可选接触法线 `normal: { x: number; y: number }`；
+  法线在容器像素坐标系中由障碍物指向当前方框，原 `direction` 按法线主轴映射。
+- 碰撞精确化不把网格吸附改为旋转轴网格；边界继续以视觉包围盒限制。
 
-> Shipped in v3.0.0 (2026-09-09): `rotate` and `transformOrigin` props with AABB-based bounds,
-> snapping, and collision semantics for rotated boxes; see `CHANGELOG.md`.
+**兼容性决策：**按本轮明确选择，在 v3.2.0 将精确碰撞设为默认。这是 3.x 内的行为不兼容变更，
+也是本计划对原有次版本兼容原则的明确例外，不能按通常的 SemVer 次版本兼容承诺描述。
+发布说明和迁移文档必须突出此变化，并说明 `collisionMode="aabb"` 的旧行为入口。
 
-- Add rotation and transform-origin support.
-  增加旋转和变换原点支持。
-- Replace axis-aligned-only geometry where necessary and define rotated bounds, snapping, and
-  collision semantics.
-  在必要位置升级仅支持轴对齐矩形的几何模型，并定义旋转后的边界、吸附和碰撞语义。
-- Use the major version to contain any unavoidable breaking changes to public geometry or event
-  payloads.
-  将不可避免的公开几何结构或事件载荷破坏性变更集中到主版本中。
+### 2.4 其它修复的验收补充
 
-## Planning principles / 规划原则
+- **FIX-02**：600px 容器内，100×100、旋转 45° 的跟随成员被移动到 `left=500` 后，
+  视觉右边界达到约 620.71px；这是本次已复现的组合越界案例。两种 `sharedBounds` 模式均须修复。
+  共享模式保持成员相对位置，独立模式使用各成员自身边界；最终组合位移确定后重新校验辅助线。
+- **FIX-03 / FIX-04**：覆盖非正方形容器、非中心原点、画布缩放、滚动及百分比模型；
+  本版修正坐标计算，固定对角点的全新缩放模式仍属于 v3.3.0。
+- **FIX-05**：本地 UMD 全局加载曾复现 `window.Vue.use is not a function`，Node 22 下
+  `require('vue-movable-box')` 返回空导出。修复应提供真正的 `.cjs` 入口，同步 `main` 与
+  `exports.require`；浏览器示例使用 `Vue.createApp(...).use(...)` 显式安装。
+- **FIX-06**：本次检查包版本为 3.1.0，默认导出的 `version` 为 3.0.0；从包元数据生成版本，
+  并在消费测试中核对一致性。
+- **FIX-07**：禁用 spacing 时不计算等间距候选；高优先级策略命中后不再计算低优先级策略，
+  距离相同时仍按目标数组顺序选择。
+- **FIX-08**：从实际 tarball 安装到独立消费环境，验证 ESM、CJS、浏览器全局、组件渲染、
+  插件安装、CSS 子路径和 TypeScript 声明；接入本地发布命令及 CI。统一 pnpm 9 使用说明，
+  补齐 Playwright 浏览器安装步骤。
 
-- Minor releases preserve existing public behavior unless a change is explicitly deprecated first.
-  次版本保持现有公开行为，除非相关能力已经明确进入弃用流程。
-- Behavior changes require colocated tests and corresponding public documentation updates.
-  行为改动必须同时提供就近测试并更新公开文档。
-- Generated files under `lib/` are updated through the production build, never by hand.
-  `lib/` 下的生成文件只通过生产构建更新，不手工修改。
-- Performance work starts with reproducible measurements rather than assumptions.
-  性能优化以可复现测量为起点，不凭假设决定实现。
+以上问题依据本地源码及已有 `lib/` 检查，不代表已核验线上 npm 包。
+
+### 2.5 开发依赖与发布门槛
+
+1. 先固化 FIX-01 的误报、漏检和中途碰撞案例，验证连续旋转碰撞方案。
+2. 建立像素几何模型和精确碰撞流程，再接入平移、缩放、旋转、取整和最终状态发布。
+3. 在同一几何基础上完成组合边界、辅助线和百分比坐标修复；发布入口、版本及消费验证
+   可独立推进。
+4. 完成跨版本测试矩阵和迁移说明，先发布 `v3.2.0-beta` 验证，再发布正式版。
+
+**全部 FIX-01–FIX-08 已验证才允许发布 v3.2.0。** 不将未完成的碰撞修复转移到 v3.3.0。
+验证过程发现的本版回归同样在本版关闭，不因原清单未列出而推迟。
+
+## 3. v3.3.0 — 变换交互增强
+
+**版本状态：待开发。依赖：v3.2.0 精确碰撞基础稳定。**
+
+| 编号 | 新增能力 | 接口与行为 | 状态 |
+| --- | --- | --- | --- |
+| FEAT-33-01 | 固定锚点缩放 | 新增 `resizeMode`，可选 `local-delta` / `fixed-anchor`，默认 `local-delta` | 待开发 |
+| FEAT-33-02 | 旋转前置守卫 | 新增 `canRotate`，拒绝时不激活、不修改模型、不发送开始事件 | 待开发 |
+| FEAT-33-03 | 角度吸附 | 新增可选 `rotationSnapAngles` 与角度阈值，默认关闭 | 待开发 |
+| FEAT-33-04 | 独立碰撞目标 | 新增 `collisionTargets`；未传沿用 `snapTargets`，空数组表示没有碰撞目标 | 待开发 |
+
+- 固定锚点模式中，角手柄固定对角点，边手柄固定对边中点；旋转后仍保持锚点稳定。
+- 旋转守卫与拖动、缩放守卫保持一致，覆盖指针与键盘入口。
+- 吸附得到的候选角度仍必须经过边界和碰撞约束，不能借吸附穿过障碍物。
+- 独立碰撞目标使吸附对象与障碍物可以分别配置，使用与旋转目标相同的几何信息。
+
+**验收：**固定锚点模式覆盖旋转、比例锁定和尺寸限制；角度吸附不能绕过碰撞约束；
+守卫拒绝无交互副作用；独立目标的未传、空数组和显式目标三种情况均有回归。
+
+## 4. v3.4.0 — 组合能力与大场景性能
+
+**版本状态：待开发。依赖：变换接口和回归基线稳定。**
+
+| 编号 | 新增能力 | 接口与行为 | 状态 |
+| --- | --- | --- | --- |
+| FEAT-34-01 | 组合整体碰撞 | 新增 `groupCollision`，可选 `leader` / `all`，默认 `leader` | 待开发 |
+| FEAT-34-02 | 批量更新优化 | 每帧统一求解组合位移并提交成员更新，减少重复几何转换和布局读取 | 待开发 |
+| FEAT-34-03 | 目标几何缓存 | 位置、尺寸、角度、原点或容器尺寸变化时失效 | 待开发 |
+| FEAT-34-04 | 完整性能基准 | 覆盖 100/500/1000 元素、单框与组合、吸附与碰撞、业务模型回写 | 待开发 |
+
+- `all` 模式检查所有选中成员与外部目标，以最早接触限制统一位移；组内成员相互排除。
+- 批量提交保持现有模型通知与批量事件语义，不通过漏发更新换取测量数字。
+- 缓存前后碰撞及吸附结果一致，覆盖目标变更、增删和容器尺寸变化。
+- 基准增加预热与多轮测量，只统计有效交互区间，报告 p50/p95、长帧比例及设备、浏览器信息。
+
+**验收：**优化前后的几何结果、目标选择与事件顺序一致；性能改善以同设备重复测量为依据，
+不预先承诺千元素 60 FPS。本版不引入空间索引。
+
+## 5. v3.5.0 — 稳定性与接入完善
+
+**版本状态：待开发。依赖：前述能力完成并进入综合验收。**
+
+| 编号 | 新增能力 | 交付内容 | 状态 |
+| --- | --- | --- | --- |
+| FEAT-35-01 | 诊断示例 | 可切换真实轮廓、AABB、接触法线和安全位置，支持导出场景 JSON | 待开发 |
+| FEAT-35-02 | 完整接入示例 | 普通布局、旋转碰撞、组合移动和受控数据回写，明确坐标系与目标数据要求 | 待开发 |
+| FEAT-35-03 | 浏览器验证扩展 | 通用交互覆盖 Chromium、Firefox、WebKit；依赖 CDP 的输入模拟保留在 Chromium | 待开发 |
+| FEAT-35-04 | 兼容性收敛 | 验证声明支持的 Vue 范围及包入口，提供从 v3.1.x 升级的迁移说明 | 待开发 |
+| FEAT-35-05 | 发布自动化完善 | 统一测试、构建、包消费检查和版本校验，并留存性能基线 | 待开发 |
+
+FIX-08 在 v3.2.0 建立的发布消费门禁持续生效，v3.5.0 在此基础上完善综合验证和结果留存，
+不把基本发布正确性推迟到本版。
+
+**验收：**计划内功能全部具备文档、示例和回归测试；不遗留阻断发布或造成交互状态损坏的缺陷。
+
+## 6. 跨版本测试与发布标准
+
+### 碰撞回归矩阵
+
+| 维度 | 必须覆盖的场景 |
+| --- | --- |
+| 旋转主体 | 仅移动方框旋转、仅目标旋转、双方均旋转 |
+| 角度与原点 | 0° / 45° / 90°、接近直角、非中心原点 |
+| 相交关系 | AABB 相交但真实矩形分离、真实穿透、边缘接触、初始重叠脱离 |
+| 连续交互 | 高速穿越、斜边滑动、多目标夹角、起止安全但中途碰撞 |
+| 输入与约束 | 平移、旋转、缩放、键盘、比例锁定、最小/最大尺寸和边界 |
+| 坐标空间 | px / %、非正方形容器、画布缩放与滚动 |
+| 生命周期 | 组合移动、取消恢复、指针捕获丢失、交互中卸载和并发指针 |
+
+- 纯几何测试之外，浏览器测试须检查真实轮廓、最终位置和事件载荷，不能只依赖样式字符串，
+  也不能复用被测算法生成全部期望值。
+- v3.2.0 的回归至少在现有 Chromium 流程通过；完整浏览器矩阵在 v3.5.0 扩展。
+- 每次发布均通过 `pnpm test`、`pnpm type-check`、`pnpm build`、`pnpm test:e2e`
+  以及 v3.2.0 新增的 tarball 消费测试。
+- 保留所有既有非旋转行为回归，对明确改变的精确碰撞默认行为提供新旧模式对照测试。
+- 验证记录包含环境、命令、结果和限制；环境缺少浏览器等失败不得直接记为交互缺陷。
+
+## 7. 开发进程与范围
+
+按一名开发者全职投入估算，以各版本验收通过作为完成条件：
+
+| 版本 | 预计投入 | 前置条件 | 发布条件 |
+| --- | --- | --- | --- |
+| v3.2.0 | 3–4 周 | 优先完成连续旋转碰撞技术验证 | 全部修复关闭并通过 beta 验证 |
+| v3.3.0 | 1–2 周 | 精确碰撞基础稳定 | 变换增强接口及交互验收通过 |
+| v3.4.0 | 2–3 周 | 变换接口和回归基线稳定 | 组合碰撞正确，优化有可重复测量 |
+| v3.5.0 | 1–2 周 | 前述能力完成 | 综合接入、兼容性和发布门禁通过 |
+
+总计约 **7–11 周**，属于工作量估算，不是发布日期承诺。v3.2.0 的连续旋转碰撞是最大不确定项，
+优先验证，不能通过仅检测终点或跳过障碍物来满足工期。
+
+截至 v3.5.0，范围限定为矩形组件核心能力：不加入框选、撤销重做、组合缩放/旋转、
+任意多边形或完整编辑器。跨不同容器坐标系的目标、任意祖先变换和同时运动物体的物理模拟
+不属于本轮承诺；目标数据应位于组件约定的共同坐标系中。
+
+## 8. 历史版本摘要 / Previous milestones
+
+以下记录依据仓库变更日志，详细完成项见 [CHANGELOG.md](CHANGELOG.md)。
+
+| 版本 | 记录日期 | 完成能力摘要 |
+| --- | --- | --- |
+| v2.0.0 | 2026-09-09 | Pointer Events、指针捕获、拖拽把手与排除区域、键盘缩放、可访问性、取消还原、前置守卫 |
+| v2.1.0 | 2026-09-09 | 无渲染 MovableGroup、受控选择、共享边界、不可变批量更新、基础性能场景 |
+| v2.2.0 | 2026-09-09 | 等间距吸附、snapFilter、snapPriority、确定性的候选选择规则 |
+| v3.0.0 | 2026-09-09 | rotate、transformOrigin、旋转缩放与基于 AABB 的约束语义 |
+| v3.1.0 | 2026-09-10 | 旋转手柄、v-model:rotate、旋转生命周期事件及组合和旋转相关修复 |
+
+原路线图记录的 2026-09-09 桌面 Chromium 基准：1,000 元素中的单框拖动约 60 FPS，
+1,000 个全选成员的组合移动平均约 60ms/帧。这是特定场景的历史记录，未在本次文档更新中重测，
+不能代表开启精确碰撞、吸附或业务模型回写后的性能；以 v3.4.0 的完整基准更新结论。
