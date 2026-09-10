@@ -199,7 +199,9 @@ export const orientedOverlap = (moving: OrientedRect, target: OrientedRect): Ori
     // Depth ties prefer the more horizontal axis so `direction` matches the legacy
     // AABB semantics (horizontal wins when both separations are equal).
     const tieBreaks =
-      !improves && overlap <= minDepth + EPSILON && (normal === null || Math.abs(axis.x) > Math.abs(normal.x));
+      !improves &&
+      overlap <= minDepth + EPSILON &&
+      (normal === null || Math.abs(axis.x) > Math.abs(normal.x));
     if (improves || tieBreaks) {
       minDepth = Math.min(minDepth, overlap);
       const sign =
@@ -302,9 +304,7 @@ export const segmentInteriorInterval = (delta: Vec2, polygon: Vec2[]): SweepInte
     if (deltaCross > 0) entry = Math.max(entry, boundary);
     else exit = Math.min(exit, boundary);
   }
-  return entry < exit - EPSILON && exit > EPSILON && entry < 1 - EPSILON
-    ? { entry, exit }
-    : null;
+  return entry < exit - EPSILON && exit > EPSILON && entry < 1 - EPSILON ? { entry, exit } : null;
 };
 
 export interface TranslationSweep {
@@ -330,11 +330,15 @@ export const sweepTranslation = (
     // Broad phase: moving AABB stretched along delta versus target AABB.
     const targetBox = orientedAABB(target);
     const overlapX =
-      Math.min(movingBox.left + movingBox.width + Math.max(delta.x, 0), targetBox.left + targetBox.width) -
-      Math.max(movingBox.left + Math.min(delta.x, 0), targetBox.left);
+      Math.min(
+        movingBox.left + movingBox.width + Math.max(delta.x, 0),
+        targetBox.left + targetBox.width
+      ) - Math.max(movingBox.left + Math.min(delta.x, 0), targetBox.left);
     const overlapY =
-      Math.min(movingBox.top + movingBox.height + Math.max(delta.y, 0), targetBox.top + targetBox.height) -
-      Math.max(movingBox.top + Math.min(delta.y, 0), targetBox.top);
+      Math.min(
+        movingBox.top + movingBox.height + Math.max(delta.y, 0),
+        targetBox.top + targetBox.height
+      ) - Math.max(movingBox.top + Math.min(delta.y, 0), targetBox.top);
     if (overlapX <= EPSILON || overlapY <= EPSILON) continue;
     const polygon = minkowskiTranslationPolygon(moving, target);
     const interval = segmentInteriorInterval(delta, polygon);

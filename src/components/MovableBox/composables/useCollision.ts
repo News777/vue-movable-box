@@ -120,10 +120,7 @@ const overlapByTarget = (rect: OrientedRect, targets: OrientedRect[]): Map<numbe
  * Gradual-escape rule for an initially overlapping state: total overlap must shrink,
  * no existing penetration may deepen, and no previously separated target may be entered.
  */
-const escapeAllowed = (
-  fromAreas: Map<number, number>,
-  toAreas: Map<number, number>
-): boolean => {
+const escapeAllowed = (fromAreas: Map<number, number>, toAreas: Map<number, number>): boolean => {
   let fromTotal = 0;
   fromAreas.forEach(area => {
     fromTotal += area;
@@ -233,18 +230,15 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
     // outside the obstacle: sliding sweeps that start exactly on the contact boundary
     // are numerically ambiguous, and the sub-pixel gap disappears when rounding.
     const retreat = Math.min(1e-3, interval.entry);
-    const contact = translateRect(
-      from,
-      { x: delta.x * (interval.entry - retreat), y: delta.y * (interval.entry - retreat) }
-    );
+    const contact = translateRect(from, {
+      x: delta.x * (interval.entry - retreat),
+      y: delta.y * (interval.entry - retreat)
+    });
     // Push a hair past contact to recover the blocking edge normal for sliding.
-    const witness = translateRect(
-      from,
-      {
-        x: delta.x * (interval.entry + (interval.exit - interval.entry) * 0.001),
-        y: delta.y * (interval.entry + (interval.exit - interval.entry) * 0.001)
-      }
-    );
+    const witness = translateRect(from, {
+      x: delta.x * (interval.entry + (interval.exit - interval.entry) * 0.001),
+      y: delta.y * (interval.entry + (interval.exit - interval.entry) * 0.001)
+    });
     const witnessOverlap = orientedOverlap(witness, sweep.target);
     const remaining: Vec2 = {
       x: delta.x * (1 - interval.entry),

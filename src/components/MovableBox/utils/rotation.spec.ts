@@ -5,7 +5,8 @@ import {
   normalizeTransformOrigin,
   resolveTransformOrigin,
   rotatedAABB,
-  rotatedAABBAt
+  rotatedAABBAt,
+  snapRotationAngle
 } from './rotation';
 
 describe('rotation utilities', () => {
@@ -100,5 +101,31 @@ describe('rotation utilities', () => {
     // Center origin matches the plain center AABB.
     const center = resolveTransformOrigin('center', rect.width, rect.height);
     expect(rotatedAABBAt(rect, 90, center)).toEqual(rotatedAABB(rect, 90));
+  });
+});
+
+describe('snapRotationAngle', () => {
+  const angles = [0, 45, 90, 180, 270];
+
+  it('snaps to the nearest candidate within the threshold', () => {
+    expect(snapRotationAngle(7, angles, 10)).toBe(0);
+    expect(snapRotationAngle(38, angles, 10)).toBe(45);
+    expect(snapRotationAngle(120, angles, 10)).toBe(120);
+  });
+
+  it('keeps the angle unchanged when no candidate is close enough', () => {
+    expect(snapRotationAngle(70, angles, 10)).toBe(70);
+    expect(snapRotationAngle(33, [45], 5)).toBe(33);
+  });
+
+  it('chooses the candidate representation nearest the input across the boundary', () => {
+    // 175 degrees is 5 away from 180, not 185 away from 0.
+    expect(snapRotationAngle(175, [0, 180], 10)).toBe(180);
+    // 190 degrees normalizes to -170; snapping to 170 moves backwards by 20.
+    expect(snapRotationAngle(190, [170], 20)).toBe(170);
+  });
+
+  it('returns the angle untouched for an empty candidate list', () => {
+    expect(snapRotationAngle(33, [], 10)).toBe(33);
   });
 });

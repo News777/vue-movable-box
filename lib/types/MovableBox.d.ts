@@ -87,6 +87,8 @@ export interface MovableBoxProps<T extends object = object> {
     canDrag?: (value: ExtendsMovableBox<T>) => boolean;
     /** Called before a resize starts with the current rectangle and handle. Return false to reject the interaction without mutating the model. */
     canResize?: (value: ExtendsMovableBox<T>, handle: HandlePosition) => boolean;
+    /** Called before a rotation starts with the current rectangle. Return false to reject the interaction without mutating the model. */
+    canRotate?: (value: ExtendsMovableBox<T>) => boolean;
     resizable?: boolean;
     /** @deprecated Use resizable. */
     resizeable?: boolean;
@@ -98,6 +100,18 @@ export interface MovableBoxProps<T extends object = object> {
     minWidth?: number | string;
     minHeight?: number | string;
     ratioLock?: boolean;
+    /**
+     * Resize semantics. 'local-delta' (default) grows the box by the pointer's local-frame
+     * delta with the opposite edge anchored; 'fixed-anchor' pins the handle's opposite
+     * corner (corner handles) or opposite edge midpoint (edge handles) at its rotated
+     * world position and solves the size from the pointer position, which stays stable
+     * under rotation.
+     */
+    resizeMode?: 'local-delta' | 'fixed-anchor';
+    /** Snap targets for the rotation angle in degrees; disabled when omitted. */
+    rotationSnapAngles?: number[];
+    /** Snap distance in degrees for rotationSnapAngles. Default 10 when snapping is on. */
+    rotationSnapThreshold?: number;
     active?: boolean;
     disabledUserSelect?: boolean;
     handles?: HandlePosition[];
@@ -137,6 +151,11 @@ export interface MovableBoxProps<T extends object = object> {
      */
     collisionMode?: 'precise' | 'aabb';
     snapTargets?: SnapTarget[];
+    /**
+     * Obstacles for collision, separate from snapping. Defaults to `snapTargets` when
+     * omitted; an explicit empty array means there are no collision obstacles.
+     */
+    collisionTargets?: SnapTarget[];
 }
 export interface MovableBoxExpose<T extends object = object> {
     getConfig: () => ExtendsMovableBox<T>;

@@ -170,3 +170,35 @@ export const deltaToLocal = (
     y: clean(-deltaX * sin + deltaY * cos)
   };
 };
+
+const wrapTo180 = (value: number): number => (((value % 360) + 540) % 360) - 180;
+
+/**
+ * Snaps `angle` to the nearest candidate in degrees when the angular distance is less
+ * than or equal to `threshold`. The returned angle is the candidate representation
+ * closest to the input, so the rotation path toward it stays short (a candidate of 270
+ * snaps a 175-degree angle to 270, not to -90 the long way round). Returns `angle`
+ * unchanged when no candidate lies within the threshold.
+ */
+export const snapRotationAngle = (
+  angle: number,
+  candidates: number[],
+  threshold: number
+): number => {
+  if (candidates.length === 0 || !Number.isFinite(threshold)) return angle;
+  const base = normalizeAngle(angle);
+  let best: number | null = null;
+  let bestDistance = Infinity;
+  for (const candidate of candidates) {
+    if (!Number.isFinite(candidate)) continue;
+    const distance = Math.abs(wrapTo180(normalizeAngle(candidate) - base));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = angle + wrapTo180(normalizeAngle(candidate) - base);
+    }
+  }
+  if (best === null || bestDistance > threshold) return angle;
+  return cleanAngle(best);
+};
+
+const cleanAngle = (value: number): number => (Math.abs(value) < 1e-9 ? 0 : value);

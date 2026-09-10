@@ -40,6 +40,10 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: PropType<(value: ExtendsMovableBox, handle: "tl" | "tm" | "tr" | "mr" | "br" | "bm" | "bl" | "ml") => boolean>;
         default: undefined;
     };
+    canRotate: {
+        type: PropType<(value: ExtendsMovableBox) => boolean>;
+        default: undefined;
+    };
     resizable: {
         type: BooleanConstructor;
         default: undefined;
@@ -76,6 +80,21 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     ratioLock: {
         type: BooleanConstructor;
         default: boolean;
+    };
+    /** Resize semantics: incremental local delta (default) or fixed world-space anchor. */
+    resizeMode: {
+        type: PropType<"local-delta" | "fixed-anchor">;
+        default: string;
+    };
+    /** Snap angles in degrees for rotation; snapping is off when omitted or empty. */
+    rotationSnapAngles: {
+        type: PropType<number[]>;
+        default: undefined;
+    };
+    /** Snap distance in degrees for rotationSnapAngles. */
+    rotationSnapThreshold: {
+        type: NumberConstructor;
+        default: number;
     };
     active: {
         type: BooleanConstructor;
@@ -175,6 +194,14 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     snapTargets: {
         type: PropType<SnapTarget[]>;
         default: () => never[];
+    };
+    /**
+     * Obstacles for collision, separate from snapping. Defaults to snapTargets when
+     * omitted; an explicit empty array means there are no collision obstacles.
+     */
+    collisionTargets: {
+        type: PropType<SnapTarget[]>;
+        default: undefined;
     };
     /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
     memberId: StringConstructor;
@@ -269,6 +296,10 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: PropType<(value: ExtendsMovableBox, handle: "tl" | "tm" | "tr" | "mr" | "br" | "bm" | "bl" | "ml") => boolean>;
         default: undefined;
     };
+    canRotate: {
+        type: PropType<(value: ExtendsMovableBox) => boolean>;
+        default: undefined;
+    };
     resizable: {
         type: BooleanConstructor;
         default: undefined;
@@ -305,6 +336,21 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     ratioLock: {
         type: BooleanConstructor;
         default: boolean;
+    };
+    /** Resize semantics: incremental local delta (default) or fixed world-space anchor. */
+    resizeMode: {
+        type: PropType<"local-delta" | "fixed-anchor">;
+        default: string;
+    };
+    /** Snap angles in degrees for rotation; snapping is off when omitted or empty. */
+    rotationSnapAngles: {
+        type: PropType<number[]>;
+        default: undefined;
+    };
+    /** Snap distance in degrees for rotationSnapAngles. */
+    rotationSnapThreshold: {
+        type: NumberConstructor;
+        default: number;
     };
     active: {
         type: BooleanConstructor;
@@ -405,6 +451,14 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: PropType<SnapTarget[]>;
         default: () => never[];
     };
+    /**
+     * Obstacles for collision, separate from snapping. Defaults to snapTargets when
+     * omitted; an explicit empty array means there are no collision obstacles.
+     */
+    collisionTargets: {
+        type: PropType<SnapTarget[]>;
+        default: undefined;
+    };
     /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
     memberId: StringConstructor;
     /** Clockwise rotation in degrees; geometry uses the rotated AABB (see README). */
@@ -461,6 +515,7 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     draggable: boolean;
     canDrag: (value: ExtendsMovableBox) => boolean;
     canResize: (value: ExtendsMovableBox, handle: "tl" | "tm" | "tr" | "mr" | "br" | "bm" | "bl" | "ml") => boolean;
+    canRotate: (value: ExtendsMovableBox) => boolean;
     resizable: boolean;
     resizeable: boolean;
     limitAreaForParent: boolean;
@@ -468,6 +523,9 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     minWidth: string | number;
     minHeight: string | number;
     ratioLock: boolean;
+    resizeMode: "local-delta" | "fixed-anchor";
+    rotationSnapAngles: number[];
+    rotationSnapThreshold: number;
     active: boolean;
     disabledUserSelect: boolean;
     handles: ("tl" | "tm" | "tr" | "mr" | "br" | "bm" | "bl" | "ml")[];
@@ -490,6 +548,7 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     allowOverlap: boolean;
     collisionMode: "precise" | "aabb";
     snapTargets: SnapTarget[];
+    collisionTargets: SnapTarget[];
     rotate: string | number;
     rotatable: boolean;
     rotationHandleOffset: number;

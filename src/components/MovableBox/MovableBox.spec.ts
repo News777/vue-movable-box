@@ -2,6 +2,7 @@ import { nextTick } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import MovableBox from './MovableBox.vue';
+import { localToWorld } from './utils/fixed-anchor';
 import { resolveTransformOrigin, rotatedAABBAt } from './utils/rotation';
 
 const flushFrame = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -1803,5 +1804,219 @@ describe('MovableBox', () => {
     const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
     expect(update.width).toBe(128);
     expect(update.height).toBe(80);
+  });
+
+  // --- v3.3.0: transform interaction enhancements ---
+
+  it('rejects pointer rotation through canRotate without side effects', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 100, height: 80 }),
+      active: false,
+      rotatable: true,
+      canRotate: () => false
+    });
+    const box = wrapper.get('.auto-draggable').element as HTMLElement;
+    Object.defineProperty(box, 'offsetWidth', { configurable: true, value: 100 });
+    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 80 });
+    box.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 100, bottom: 80, width: 100, height: 80 }) as DOMRect;
+
+    wrapper
+      .get('.rotation-handle')
+      .element.dispatchEvent(pointerEvent('pointerdown', 60, 0, { isPrimary: true }));
+    document.documentElement.dispatchEvent(pointerEvent('pointermove', 100, 40));
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 100, 40));
+    await nextTick();
+
+    expect(wrapper.emitted('rotate-start')).toBeFalsy();
+    expect(wrapper.emitted('update:rotate')).toBeFalsy();
+    expect(wrapper.emitted('active')).toBeFalsy();
+    expect(wrapper.get('.auto-draggable').classes()).not.toContain('is-rotating');
+  });
+
+  it('rejects keyboard rotation through canRotate without events', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      canRotate: () => false
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.emitted('rotate-start')).toBeFalsy();
+    expect(wrapper.emitted('update:rotate')).toBeFalsy();
+  });
+
+  it('allows rotation when canRotate approves', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      canRotate: () => true
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.emitted('rotate-start')).toBeTruthy();
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(1);
+  });
+
+  it('snaps keyboard rotation to the configured snap angles', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 5,
+      rotationSnapAngles: [0, 45, 90],
+      rotationSnapThreshold: 10
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    // A 5-degree step lands within 10 degrees of 0 and snaps back to it.
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(0);
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight', shiftKey: true });
+    // Shift steps 50 degrees from 0, which is within 10 of 45 and snaps there.
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(45);
+  });
+
+  it('cannot use rotation snapping to swing through a collision target', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 100, height: 100 }),
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90,
+      collisionEnabled: true,
+      rotationSnapAngles: [90],
+      snapTargets: [{ id: 'blocker', left: -60, top: 30, width: 40, height: 40 }]
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    const value = wrapper.emitted('update:rotate')?.at(-1)?.[0] as number;
+    // The rotated left vertex sweeps into the blocker around 45 degrees, so the snapped
+    // 90-degree candidate is constrained along the path.
+    expect(value).toBeLessThan(45);
+    expect(value).toBeGreaterThan(0);
+  });
+
+  it('blocks drags with snapTargets when collisionTargets is omitted', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 20, height: 20 }),
+      collisionEnabled: true,
+      snapTargets: [{ id: 'wall', left: 50, top: 0, width: 20, height: 20 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [60, 0]);
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.left).toBe(30);
+  });
+
+  it('ignores all obstacles when collisionTargets is an empty array', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 20, height: 20 }),
+      collisionEnabled: true,
+      snapTargets: [{ id: 'wall', left: 50, top: 0, width: 20, height: 20 }],
+      collisionTargets: []
+    });
+    await pointerDrag(wrapper, [0, 0], [60, 0]);
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.left).toBe(60);
+  });
+
+  it('uses explicit collisionTargets independently of snap targets', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 20, height: 20 }),
+      collisionEnabled: true,
+      snapTargets: [{ id: 'snap-only', left: 50, top: 0, width: 20, height: 20 }],
+      collisionTargets: [{ id: 'obstacle', left: 60, top: 50, width: 20, height: 20 }]
+    });
+    // The snap-only target no longer blocks horizontally.
+    await pointerDrag(wrapper, [0, 0], [60, 0]);
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.left).toBe(60);
+    // But the explicit obstacle still blocks vertically.
+    await pointerDrag(wrapper, [0, 0], [0, 60]);
+    const second = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(second.top).toBe(30);
+  });
+
+  it('resizes with a fixed world-space anchor in fixed-anchor mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 20, width: 100, height: 50 }),
+      handles: ['br'],
+      resizeDirections: ['br'],
+      resizeMode: 'fixed-anchor'
+    });
+    await pointerDrag(wrapper, [110, 70], [150, 100], '.handle-br');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    // The top-left corner stays pinned while the box grows by the pointer delta.
+    expect(update.left).toBe(10);
+    expect(update.top).toBe(20);
+    expect(update.width).toBe(140);
+    expect(update.height).toBe(80);
+  });
+
+  it('resizes rotated boxes with a fixed anchor in fixed-anchor mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 20, width: 100, height: 50 }),
+      rotate: 45,
+      handles: ['mr'],
+      resizeDirections: ['mr'],
+      resizeMode: 'fixed-anchor'
+    });
+    const anchorBefore = localToWorld(
+      { left: 10, top: 20, width: 100, height: 50 },
+      45,
+      'center',
+      { x: 0, y: 25 }
+    );
+    await pointerDrag(wrapper, [110, 45], [160, 45], '.handle-mr');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    // A 50px horizontal drag projects onto the rotated local x axis: width grows by
+    // 50*cos(45) = 35.4 (rounded) while the height stays untouched.
+    expect(update.width).toBe(135);
+    expect(update.height).toBe(50);
+    // The left edge midpoint anchor keeps its rotated world position.
+    const anchorAfter = localToWorld(
+      { left: update.left, top: update.top, width: update.width, height: update.height },
+      45,
+      'center',
+      { x: 0, y: update.height / 2 }
+    );
+    expect(anchorAfter.x).toBeCloseTo(anchorBefore.x, 0);
+    expect(anchorAfter.y).toBeCloseTo(anchorBefore.y, 0);
+  });
+
+  it('applies percent-unit size limits in fixed-anchor mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 20, width: 40, height: 50 }),
+      unitType: '%',
+      handles: ['br'],
+      resizeDirections: ['br'],
+      resizeMode: 'fixed-anchor',
+      minWidth: 20
+    });
+    // Shrinking by 180px (-36%) hits the 20% (=100px of 500) minimum width; model-unit
+    // values treated as px would have clamped at 20px = 4%.
+    await pointerDrag(wrapper, [210, 70], [30, 30], '.handle-br');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.width).toBe(20);
+    expect(update.height).toBe(40);
+    expect(update.left).toBe(10);
+    expect(update.top).toBe(20);
+  });
+
+  it('applies percent-unit maximum height in fixed-anchor mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 20, width: 40, height: 50 }),
+      unitType: '%',
+      handles: ['br'],
+      resizeDirections: ['br'],
+      resizeMode: 'fixed-anchor',
+      maxHeight: 80
+    });
+    // Growing 160px (+32%) hits the 80% (=320px of 400) maximum height.
+    await pointerDrag(wrapper, [210, 70], [210, 230], '.handle-br');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.height).toBe(80);
+    expect(update.width).toBe(40);
+    expect(update.left).toBe(10);
+    expect(update.top).toBe(20);
   });
 });

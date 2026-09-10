@@ -92,6 +92,7 @@ Visit http://localhost:5173 for the interactive demo.
 | `dragCancel`          | `string`                                                     | -                                 | CSS selector for elements (e.g. forms, buttons) that must not start a drag                                   |
 | `canDrag`             | `(value: MovableBoxRect) => boolean`                         | -                                 | Called before a drag starts; return `false` to reject the interaction without mutating the model             |
 | `canResize`           | `(value: MovableBoxRect, handle: HandlePosition) => boolean` | -                                 | Called before a resize starts; return `false` to reject the interaction without mutating the model           |
+| `canRotate`           | `(value: MovableBoxRect) => boolean`                         | -                                 | Called before a rotation starts; return `false` to reject the interaction without mutating the model        |
 | `resizable`           | `boolean`                                                    | `true`                            | Enable resizing (preferred name)                                                                             |
 | `resizeable`          | `boolean`                                                    | `true`                            | Deprecated alias of `resizable` for backward compatibility                                                   |
 | `limitAreaForParent`  | `boolean`                                                    | `true`                            | Limit to parent element                                                                                      |
@@ -101,6 +102,7 @@ Visit http://localhost:5173 for the interactive demo.
 | `minWidth`            | `number \| string`                                           | `0`                               | Minimum width                                                                                                |
 | `minHeight`           | `number \| string`                                           | `0`                               | Minimum height                                                                                               |
 | `ratioLock`           | `boolean`                                                    | `false`                           | Lock aspect ratio when resizing                                                                              |
+| `resizeMode`          | `'local-delta' \| 'fixed-anchor'`                            | `'local-delta'`                   | `'fixed-anchor'` pins the handle's opposite corner/edge midpoint at its rotated world position while resizing |
 | `active`              | `boolean`                                                    | `false`                           | Is active                                                                                                    |
 | `disabled`            | `boolean`                                                    | `false`                           | Completely disabled                                                                                          |
 | `disabledUserSelect`  | `boolean`                                                    | `true`                            | Disable text selection while dragging                                                                        |
@@ -115,6 +117,9 @@ Visit http://localhost:5173 for the interactive demo.
 | `snapToGrid`          | `boolean`                                                    | `false`                           | Snap to grid                                                                                                 |
 | `gridSize`            | `number`                                                     | `20`                              | Grid size in the active coordinate unit                                                                      |
 | `snapToElements`      | `boolean`                                                    | `false`                           | Snap to edges or centers in `snapTargets`                                                                    |
+| `rotationSnapAngles`  | `number[]`                                                   | -                                 | Snap angles in degrees for rotation; off when omitted                                                      |
+| `rotationSnapThreshold` | `number`                                                   | `10`                              | Snap distance in degrees for `rotationSnapAngles`                                                          |
+| `collisionTargets`    | `SnapTarget[]`                                               | -                                 | Collision obstacles, separate from snapping. Defaults to `snapTargets`; `[]` disables collision obstacles   |
 | `snapThreshold`       | `number`                                                     | `10`                              | Element snap threshold                                                                                       |
 | `snapTargets`         | `SnapTarget[]`                                               | `[]`                              | Rectangles of other elements; inside a group, use `id: memberId` so member targets are excluded               |
 | `snapFilter`          | `(target, axis) => boolean`                                  | `undefined`                       | Return false to exclude a target from snapping on `horizontal` / `vertical`                                  |
@@ -441,6 +446,18 @@ Rotated geometry semantics (defined in 3.0.0):
   units, so diagonal handle drags distribute width/height correctly.
 
 Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
+
+#### Resize Modes (3.3.0)
+
+`resizeMode="local-delta"` (default) grows the box by the pointer's local-frame delta with the opposite edge anchored, matching pre-3.3 behavior. `resizeMode="fixed-anchor"` pins the handle's opposite corner (corner handles) or the opposite edge midpoint (edge handles) at its rotated world position and solves the size from the pointer position, so the anchor stays visually stable under rotation. Ratio lock, min/max sizes, bounds, snapping, and collision all keep their documented meaning in both modes.
+
+#### Rotation Guards and Snapping (3.3.0)
+
+`canRotate` mirrors `canDrag`/`canResize`: returning `false` rejects a pointer or keyboard rotation before activation, model mutation, or any event. `rotationSnapAngles` lists candidate angles in degrees; a candidate within `rotationSnapThreshold` degrees wins, and the snapped angle still passes bounds and collision constraints, so snapping cannot swing the box through an obstacle.
+
+#### Separate Collision Targets (3.3.0)
+
+`collisionTargets` configures obstacles independently of snapping. When omitted the snap targets act as obstacles; an explicit empty array disables collision obstacles while snapping keeps working.
 
 ### Keyboard Control
 

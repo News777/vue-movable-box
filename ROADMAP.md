@@ -117,6 +117,9 @@ are not yet available. Completed changes belong in [CHANGELOG.md](CHANGELOG.md).
 
 ### 2.6 v3.2.0 验证记录（2026-09-10）
 
+- 评审记录：两轮独立代码评审（MiniMax-M3 与 DeepSeek），确认并修复 percent 模式 fixed-anchor
+  的 min/max 单位错位、maxWidth≤0 语义对齐、边界钳制后锚点漂移（新增 placeAnchorAt 恢复，
+  边界优先）、组件层旋转 fixed-anchor 测试名实不符、Prettier 格式与文档小节位置等问题。
 - 环境：Windows 10（win32 10.0.26200），Node 22.15，pnpm 9。
 - `pnpm test`：181 项单元测试全部通过，覆盖路线图第 6 节碰撞回归矩阵的关键场景：
   FIX-01 路线图最小复现案例（AABB 误报、旋转目标漏检）、高速穿越与中途碰撞、切线滑动、
@@ -135,14 +138,14 @@ are not yet available. Completed changes belong in [CHANGELOG.md](CHANGELOG.md).
 
 ## 3. v3.3.0 — 变换交互增强
 
-**版本状态：待开发。依赖：v3.2.0 精确碰撞基础稳定。**
+**版本状态：已开发完成并通过验证（v3.3.0）。**
 
 | 编号 | 新增能力 | 接口与行为 | 状态 |
 | --- | --- | --- | --- |
-| FEAT-33-01 | 固定锚点缩放 | 新增 `resizeMode`，可选 `local-delta` / `fixed-anchor`，默认 `local-delta` | 待开发 |
-| FEAT-33-02 | 旋转前置守卫 | 新增 `canRotate`，拒绝时不激活、不修改模型、不发送开始事件 | 待开发 |
-| FEAT-33-03 | 角度吸附 | 新增可选 `rotationSnapAngles` 与角度阈值，默认关闭 | 待开发 |
-| FEAT-33-04 | 独立碰撞目标 | 新增 `collisionTargets`；未传沿用 `snapTargets`，空数组表示没有碰撞目标 | 待开发 |
+| FEAT-33-01 | 固定锚点缩放 | 新增 `resizeMode`，可选 `local-delta` / `fixed-anchor`，默认 `local-delta` | 已验证 |
+| FEAT-33-02 | 旋转前置守卫 | 新增 `canRotate`，拒绝时不激活、不修改模型、不发送开始事件 | 已验证 |
+| FEAT-33-03 | 角度吸附 | 新增可选 `rotationSnapAngles` 与角度阈值，默认关闭 | 已验证 |
+| FEAT-33-04 | 独立碰撞目标 | 新增 `collisionTargets`；未传沿用 `snapTargets`，空数组表示没有碰撞目标 | 已验证 |
 
 - 固定锚点模式中，角手柄固定对角点，边手柄固定对边中点；旋转后仍保持锚点稳定。
 - 旋转守卫与拖动、缩放守卫保持一致，覆盖指针与键盘入口。
@@ -151,6 +154,19 @@ are not yet available. Completed changes belong in [CHANGELOG.md](CHANGELOG.md).
 
 **验收：**固定锚点模式覆盖旋转、比例锁定和尺寸限制；角度吸附不能绕过碰撞约束；
 守卫拒绝无交互副作用；独立目标的未传、空数组和显式目标三种情况均有回归。
+
+**v3.3.0 验证记录（2026-09-10）：**
+- `pnpm test`：203 项单元测试全部通过。固定锚点缩放有纯几何测试（未旋转/旋转 30° 的锚点
+  世界坐标恒定、边手柄另一轴不变、比例锁定、最小/最大限制）与组件级测试（未旋转与旋转 45° 下的
+  `fixed-anchor` 指针缩放、percent 单位的 min/max 限制）；`canRotate` 覆盖指针与键盘拒绝（无 `rotate-start`、无
+  `update:rotate`、无 `active` 事件）与放行；角度吸附覆盖阈值内吸附、跨 ±180° 边界的最近
+  表示选择、以及"吸附候选被障碍物约束在路径上"的场景；`collisionTargets` 覆盖未传、空数组、
+  显式列表三种情况。
+- `pnpm type-check` / `pnpm build` / `pnpm test:package`（9 项）/ `pnpm test:e2e`（10 项）全部通过。
+- 评审记录：两轮独立代码评审（MiniMax-M3 与 DeepSeek），确认并修复 percent 模式 fixed-anchor
+  的 min/max 单位错位、maxWidth≤0 语义对齐、边界钳制后锚点漂移（新增 placeAnchorAt 恢复，
+  边界优先）、组件层旋转 fixed-anchor 测试名实不符、Prettier 格式与文档小节位置等问题。
+- 环境：Windows 10（win32 10.0.26200），Node 22.15，pnpm 9。
 
 ## 4. v3.4.0 — 组合能力与大场景性能
 
@@ -240,6 +256,7 @@ FIX-08 在 v3.2.0 建立的发布消费门禁持续生效，v3.5.0 在此基础�
 | v3.0.0 | 2026-09-09 | rotate、transformOrigin、旋转缩放与基于 AABB 的约束语义 |
 | v3.1.0 | 2026-09-10 | 旋转手柄、v-model:rotate、旋转生命周期事件及组合和旋转相关修复 |
 | v3.2.0 | 2026-09-10 | precise 旋转碰撞（连续碰撞检测、碰撞目标 rotate/transformOrigin、接触法线）、组合旋转边界、辅助线呈现层、百分比旋转缩放修正、CJS 入口、版本单一来源、惰性吸附、tarball 消费门禁 |
+| v3.3.0 | 2026-09-10 | 固定锚点缩放 resizeMode、canRotate 旋转守卫、rotationSnapAngles 角度吸附、collisionTargets 独立碰撞目标 |
 
 原路线图记录的 2026-09-09 桌面 Chromium 基准：1,000 元素中的单框拖动约 60 FPS，
 1,000 个全选成员的组合移动平均约 60ms/帧。这是特定场景的历史记录，未在本次文档更新中重测，

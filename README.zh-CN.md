@@ -92,6 +92,7 @@ pnpm dev
 | `dragCancel`         | `string`                                                     | -                                 | 拖拽排除区域的 CSS 选择器；命中元素（如表单、按钮）不会触发拖拽       |
 | `canDrag`            | `(value: MovableBoxRect) => boolean`                         | -                                 | 拖拽前置守卫；返回 `false` 时拒绝本次拖拽，且不修改模型               |
 | `canResize`          | `(value: MovableBoxRect, handle: HandlePosition) => boolean` | -                                 | 缩放前置守卫；返回 `false` 时拒绝本次缩放，且不修改模型               |
+| `canRotate`          | `(value: MovableBoxRect) => boolean`                         | -                                 | 旋转开始前调用；返回 `false` 拒绝本次交互且不修改模型                                                            |
 | `resizable`          | `boolean`                                                    | `true`                            | 是否可调整大小（推荐名称）                                            |
 | `resizeable`         | `boolean`                                                    | `true`                            | `resizable` 的兼容旧别名，已废弃                                      |
 | `limitAreaForParent` | `boolean`                                                    | `true`                            | 是否限制在父元素区域内                                                |
@@ -101,6 +102,7 @@ pnpm dev
 | `minWidth`           | `number \| string`                                           | `0`                               | 最小宽度                                                              |
 | `minHeight`          | `number \| string`                                           | `0`                               | 最小高度                                                              |
 | `ratioLock`          | `boolean`                                                    | `false`                           | 调整大小时是否锁定宽高比                                              |
+| `resizeMode`         | `'local-delta' \| 'fixed-anchor'`                            | `'local-delta'`                   | `'fixed-anchor'` 缩放时把手柄的对角点/对边中点钉在其旋转后的世界坐标上                                          |
 | `active`             | `boolean`                                                    | `false`                           | 是否处于激活状态                                                      |
 | `disabled`           | `boolean`                                                    | `false`                           | 是否完全禁用                                                          |
 | `disabledUserSelect` | `boolean`                                                    | `true`                            | 拖拽时是否禁止文本选择                                                |
@@ -115,6 +117,9 @@ pnpm dev
 | `snapToGrid`         | `boolean`                                                    | `false`                           | 是否吸附到网格                                                        |
 | `gridSize`           | `number`                                                     | `20`                              | 网格大小（当前坐标单位）                                              |
 | `snapToElements`     | `boolean`                                                    | `false`                           | 吸附到 `snapTargets` 的边缘或中心                                     |
+| `rotationSnapAngles` | `number[]`                                                   | -                                 | 旋转角度吸附候选（度）；未传则关闭                                                                        |
+| `rotationSnapThreshold` | `number`                                                   | `10`                              | `rotationSnapAngles` 的吸附距离（度）                                                                      |
+| `collisionTargets`   | `SnapTarget[]`                                               | -                                 | 碰撞障碍物，可与吸附对象分别配置；未传沿用 `snapTargets`，`[]` 表示没有碰撞障碍物                              |
 | `snapThreshold`      | `number`                                                     | `10`                              | 元素吸附阈值                                                          |
 | `snapTargets`        | `SnapTarget[]`                                               | `[]`                              | 其他元素的矩形数据；组合内请使用 `id: memberId` 以排除成员目标          |
 | `snapFilter`         | `(target, axis) => boolean`                                  | `undefined`                       | 返回 false 可在对应轴（`horizontal` / `vertical`）上排除该吸附目标    |
@@ -411,6 +416,26 @@ boxRef.value.cancelInteraction();
   百分点单位，斜向手柄拖动的宽高分配不再混淆两轴。
 
 `rotate: 0` 的方框与 2.x 行为完全一致，升级无需改动。
+
+#### 缩放模式（3.3.0）
+
+`resizeMode="local-delta"`（默认）按指针在本地坐标系的位移增量缩放，对边保持锚定，与 3.3 之前
+行为一致。`resizeMode="fixed-anchor"` 把角手柄的对角点（角手柄）或对边中点（边手柄）钉在其旋转
+后的世界坐标上，由指针位置反解尺寸，旋转下锚点在视觉上保持稳定。比例锁定、最小/最大尺寸、边界、
+吸附与碰撞在两种模式下均按文档语义生效。
+
+#### 旋转守卫与角度吸附（3.3.0）
+
+`canRotate` 与 `canDrag`/`canResize` 一致：返回 `false` 时拒绝指针或键盘旋转，不激活、不修改
+模型、不发送任何事件。`rotationSnapAngles` 列出候选角度（度），与候选角度差不超过
+`rotationSnapThreshold` 度时吸附生效；吸附得到的角度仍经过边界与碰撞约束，不能借吸附扫过障碍物。
+角度路径约束仅在默认的 `collisionMode="precise"` 下生效；旧的 `'aabb'` 模式保持 3.2 之前
+不受约束的旋转行为。
+
+#### 独立碰撞目标（3.3.0）
+
+`collisionTargets` 将碰撞障碍物与吸附对象分别配置。未传时吸附目标兼作障碍物；显式空数组表示
+没有碰撞障碍物，吸附仍然生效。
 
 ### 键盘控制
 

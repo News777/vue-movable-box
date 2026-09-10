@@ -112,8 +112,15 @@ import {
   normalizeAngle,
   normalizeTransformOrigin,
   resolveTransformOrigin,
-  rotatedAABBAt
+  rotatedAABBAt,
+  snapRotationAngle
 } from './utils/rotation';
+import {
+  anchorLocal,
+  localToWorld,
+  placeAnchorAt,
+  resizeWithFixedAnchor
+} from './utils/fixed-anchor';
 import { GROUP_CONTEXT_KEY, type GroupMemberApi } from '../MovableGroup/context';
 import type {
   BoundsMargin,
@@ -151,6 +158,10 @@ const props = defineProps({
     type: Function as PropType<(value: ExtendsMovableBox, handle: HandlePosition) => boolean>,
     default: undefined
   },
+  canRotate: {
+    type: Function as PropType<(value: ExtendsMovableBox) => boolean>,
+    default: undefined
+  },
   resizable: { type: Boolean, default: undefined },
   resizeable: { type: Boolean, default: undefined },
   limitAreaForParent: { type: Boolean, default: true },
@@ -164,6 +175,15 @@ const props = defineProps({
   minWidth: { type: [Number, String] as PropType<number | string>, default: 0 },
   minHeight: { type: [Number, String] as PropType<number | string>, default: 0 },
   ratioLock: { type: Boolean, default: false },
+  /** Resize semantics: incremental local delta (default) or fixed world-space anchor. */
+  resizeMode: {
+    type: String as PropType<'local-delta' | 'fixed-anchor'>,
+    default: 'local-delta'
+  },
+  /** Snap angles in degrees for rotation; snapping is off when omitted or empty. */
+  rotationSnapAngles: { type: Array as PropType<number[]>, default: undefined },
+  /** Snap distance in degrees for rotationSnapAngles. */
+  rotationSnapThreshold: { type: Number, default: 10 },
   active: { type: Boolean, default: false },
   disabledUserSelect: { type: Boolean, default: true },
   handles: {
@@ -213,6 +233,11 @@ const props = defineProps({
     default: 'precise'
   },
   snapTargets: { type: Array as PropType<SnapTarget[]>, default: () => [] },
+  /**
+   * Obstacles for collision, separate from snapping. Defaults to snapTargets when
+   * omitted; an explicit empty array means there are no collision obstacles.
+   */
+  collisionTargets: { type: Array as PropType<SnapTarget[]>, default: undefined },
   /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
   memberId: String,
   /** Clockwise rotation in degrees; geometry uses the rotated AABB (see README). */
@@ -584,8 +609,7 @@ const orientedSnapTarget = (target: SnapTarget): OrientedRect => {
   };
 };
 
-const orientedSnapTargets = (): OrientedRect[] =>
-  externalSnapTargets().map(orientedSnapTarget);
+const orientedSnapTargets = (): OrientedRect[] => collisionObstacles().map(orientedSnapTarget);
 
 /** Snap targets described by their visual (rotated AABB) contour, back in model units. */
 const visualSnapTargets = () => {
@@ -779,7 +803,13 @@ const fitRotatedSizeToArea = (
   handle: HandlePosition | null
 ): ExtendsMovableBox => {
   const angle = rotationAngle.value;
-  if (!angle || !props.limitAreaForParent || !state.parentElement) return candidate;
+  if (
+    (!angle && props.resizeMode !== 'fixed-anchor') ||
+    !props.limitAreaForParent ||
+    !state.parentElement
+  ) {
+    return candidate;
+  }
   const edges = getAreaEdges();
   const areaWidth = Math.max(0, edges.maxRight - edges.minLeft);
   const areaHeight = Math.max(0, edges.maxBottom - edges.minTop);
@@ -1055,6 +1085,13 @@ const externalSnapTargets = () =>
     ? props.snapTargets.filter(target => !groupContext.hasMember(target.id))
     : props.snapTargets;
 
+// Collision obstacles: collisionTargets when provided (an explicit empty array disables
+// collision), otherwise the snap targets. Group members never obstruct each other.
+const collisionObstacles = (): SnapTarget[] => {
+  const list = props.collisionTargets === undefined ? props.snapTargets : props.collisionTargets;
+  return groupContext ? list.filter(target => !groupContext.hasMember(target.id)) : list;
+};
+
 const roundValue = (value: number) =>
   props.isKeepDecimals ? keepDecimalsToNum(value, 0, props.decimalPlaces) : Math.round(value);
 // Converts a pointer displacement that is already expressed in unscaled canvas pixels
@@ -1167,7 +1204,7 @@ const resolveCollision = (
   const result = collision.resolveCandidate(
     candidateProbe,
     geometryProbe(previous),
-    externalSnapTargets(),
+    collisionObstacles(),
     rect => ({
       left: roundValue(rect.left),
       top: roundValue(rect.top),
@@ -1323,6 +1360,110 @@ const applyInteractivePosition = (
 
 const isHandleAllowed = (handle: HandlePosition) => props.resizeDirections.includes(handle);
 
+// Solves a resize candidate from a pixel-space pointer delta, dispatching between the
+// incremental local-delta model and the fixed world-space anchor model.
+const resolveResizeCandidate = (
+  start: ExtendsMovableBox,
+  handle: HandlePosition,
+  rawPx: { x: number; y: number }
+): ExtendsMovableBox => {
+  if (props.resizeMode !== 'fixed-anchor') {
+    const localPx = deltaToLocal(rawPx.x, rawPx.y, rotationAngle.value);
+    const localDelta = {
+      x: scaledPixelToModel(localPx.x, 'horizontal'),
+      y: scaledPixelToModel(localPx.y, 'vertical')
+    };
+    return resizeFromHandle(start, handle, localDelta.x, localDelta.y);
+  }
+  const scale = getPlaneScale();
+  const startWidth = asNumber(start.width);
+  const startHeight = asNumber(start.height);
+  // Size limits are configured in model units and must be solved in pixel space;
+  // non-positive maxima mean unlimited, matching the local-delta path.
+  const minWidthProp = Math.max(0, valIsNaN(props.minWidth, 0));
+  const minHeightProp = Math.max(0, valIsNaN(props.minHeight, 0));
+  const maxWidthProp = valIsNaN(props.maxWidth, Infinity);
+  const maxHeightProp = valIsNaN(props.maxHeight, Infinity);
+  const candidatePx = resizeWithFixedAnchor({
+    start: {
+      left: asNumber(start.left) * scale.x,
+      top: asNumber(start.top) * scale.y,
+      width: startWidth * scale.x,
+      height: startHeight * scale.y
+    },
+    angle: rotationAngle.value,
+    originSpec: props.transformOrigin,
+    handle,
+    pointerDelta: rawPx,
+    minWidth: minWidthProp * scale.x,
+    minHeight: minHeightProp * scale.y,
+    maxWidth: maxWidthProp > 0 ? maxWidthProp * scale.x : Infinity,
+    maxHeight: maxHeightProp > 0 ? maxHeightProp * scale.y : Infinity,
+    ratio:
+      props.ratioLock && startWidth > 0 && startHeight > 0
+        ? (startWidth * scale.x) / (startHeight * scale.y)
+        : null
+  });
+  return {
+    ...start,
+    left: roundValue(candidatePx.left / scale.x),
+    top: roundValue(candidatePx.top / scale.y),
+    width: roundValue(candidatePx.width / scale.x),
+    height: roundValue(candidatePx.height / scale.y)
+  };
+};
+
+// Restores the fixed-anchor world position after bounds fitting and clamping moved the
+// rectangle. Bounds take priority: the restored placement is only kept when it stays
+// inside the bounds area.
+const applyFixedAnchorPlacement = (
+  start: ExtendsMovableBox,
+  candidate: ExtendsMovableBox,
+  handle: HandlePosition
+): ExtendsMovableBox => {
+  const scale = getPlaneScale();
+  const angle = rotationAngle.value;
+  const startPx = {
+    left: asNumber(start.left) * scale.x,
+    top: asNumber(start.top) * scale.y,
+    width: asNumber(start.width) * scale.x,
+    height: asNumber(start.height) * scale.y
+  };
+  const anchorWorld = localToWorld(
+    startPx,
+    angle,
+    props.transformOrigin,
+    anchorLocal(handle, startPx.width, startPx.height)
+  );
+  const placedPx = placeAnchorAt(
+    {
+      left: asNumber(candidate.left) * scale.x,
+      top: asNumber(candidate.top) * scale.y,
+      width: asNumber(candidate.width) * scale.x,
+      height: asNumber(candidate.height) * scale.y
+    },
+    angle,
+    props.transformOrigin,
+    handle,
+    anchorWorld
+  );
+  const restored = {
+    ...candidate,
+    left: roundValue(placedPx.left / scale.x),
+    top: roundValue(placedPx.top / scale.y)
+  };
+  if (!props.limitAreaForParent || !state.parentElement) return restored;
+  const edges = getAreaEdges();
+  const probe = geometryProbe(restored);
+  const epsilon = 1e-7;
+  const fits =
+    probe.left >= edges.minLeft - epsilon &&
+    probe.left + probe.width <= edges.maxRight + epsilon &&
+    probe.top >= edges.minTop - epsilon &&
+    probe.top + probe.height <= edges.maxBottom + epsilon;
+  return fits ? restored : candidate;
+};
+
 const resizeFromHandle = (
   start: ExtendsMovableBox,
   handle: HandlePosition,
@@ -1434,12 +1575,7 @@ const pointerAngleFromOrigin = (source: PointerEvent, originX: number, originY: 
   (Math.atan2(source.clientY - originY, source.clientX - originX) * 180) / Math.PI + 90;
 
 const processInteraction = (source: PointerEvent) => {
-  if (
-    props.disabled ||
-    props.initRect ||
-    !state.isInteracting
-  )
-    return;
+  if (props.disabled || props.initRect || !state.isInteracting) return;
 
   if (state.isRotating) {
     const pointerAngle = pointerAngleFromOrigin(
@@ -1448,7 +1584,12 @@ const processInteraction = (source: PointerEvent) => {
       state.rotationOriginY
     );
     const delta = normalizeAngle(pointerAngle - state.rotationStartPointerAngle);
-    commitRotation(constrainRotation(state.beforeRotation, state.beforeRotation + delta));
+    const snapped = snapRotationAngle(
+      state.beforeRotation + delta,
+      props.rotationSnapAngles ?? [],
+      props.rotationSnapThreshold
+    );
+    commitRotation(constrainRotation(state.beforeRotation, snapped));
     return;
   }
 
@@ -1502,26 +1643,20 @@ const processInteraction = (source: PointerEvent) => {
     // rotating raw percent values would conflate the width-based and height-based axes.
     const configuredScale = valIsNaN(props.scale, 1);
     const divisor = configuredScale === 0 ? 1 : configuredScale;
-    const localPx = deltaToLocal(
-      (source.clientX - state.initX) / divisor,
-      (source.clientY - state.initY) / divisor,
-      rotationAngle.value
-    );
-    const localDelta = {
-      x: scaledPixelToModel(localPx.x, 'horizontal'),
-      y: scaledPixelToModel(localPx.y, 'vertical')
+    const rawPx = {
+      x: (source.clientX - state.initX) / divisor,
+      y: (source.clientY - state.initY) / divisor
     };
-    let candidate = resizeFromHandle(
-      state.beforeInteraction,
-      state.handle,
-      localDelta.x,
-      localDelta.y
-    );
-    // Unrotated boxes are constrained against local edges in resizeFromHandle. Rotated
-    // boxes instead fit their AABB into the area and then clamp that visual box.
-    if (rotationAngle.value) {
+    let candidate = resolveResizeCandidate(state.beforeInteraction, state.handle, rawPx);
+    // Unrotated local-delta boxes are constrained against local edges in
+    // resizeFromHandle. Rotated boxes and fixed-anchor resizes instead fit their visual
+    // box into the area and then clamp that box.
+    if (rotationAngle.value || props.resizeMode === 'fixed-anchor') {
       candidate = fitRotatedSizeToArea(candidate, state.handle);
       candidate = clampPosition(candidate);
+      if (props.resizeMode === 'fixed-anchor') {
+        candidate = applyFixedAnchorPlacement(state.beforeInteraction, candidate, state.handle);
+      }
     }
     reportOutOfBounds(candidate);
     const collisionResolved = resolveCollision(candidate, previous);
@@ -1760,6 +1895,7 @@ const handleRotationPointerDown = (source: PointerEvent) => {
   if (!source.isPrimary || source.button !== 0) return;
   if (props.disabled || props.initRect || !props.rotatable) return;
   if (state.isInteracting) return;
+  if (props.canRotate?.(cloneRect(internalRect.value)) === false) return;
   refreshArea();
   const origin = rotationOriginInViewport();
   if (!origin) return;
@@ -1866,15 +2002,16 @@ const resizeWithKeyboard = (handle: HandlePosition, direction: DragDirection, di
   const deltaX = direction === 'left' ? -distance : direction === 'right' ? distance : 0;
   const deltaY = direction === 'top' ? -distance : direction === 'bottom' ? distance : 0;
   // Rotate the step in pixel space, then map back onto model units (see pointer resize).
-  const localPx = deltaToLocal(toPixelX(deltaX), toPixelY(deltaY), rotationAngle.value);
-  const localDelta = {
-    x: scaledPixelToModel(localPx.x, 'horizontal'),
-    y: scaledPixelToModel(localPx.y, 'vertical')
-  };
-  let candidate = resizeFromHandle(previous, handle, localDelta.x, localDelta.y);
-  if (rotationAngle.value) {
+  let candidate = resolveResizeCandidate(previous, handle, {
+    x: toPixelX(deltaX),
+    y: toPixelY(deltaY)
+  });
+  if (rotationAngle.value || props.resizeMode === 'fixed-anchor') {
     candidate = fitRotatedSizeToArea(candidate, handle);
     candidate = clampPosition(candidate);
+    if (props.resizeMode === 'fixed-anchor') {
+      candidate = applyFixedAnchorPlacement(previous, candidate, handle);
+    }
   }
   reportOutOfBounds(candidate);
   const collisionResolved = resolveCollision(candidate, previous);
@@ -1993,13 +2130,14 @@ const handleKeyDown = (event: KeyboardEvent) => {
 const handleRotationKeyDown = (event: KeyboardEvent) => {
   if (!props.keyboardEnabled || props.disabled || props.initRect || !props.rotatable) return;
   if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+  if (props.canRotate?.(cloneRect(internalRect.value)) === false) return;
   event.preventDefault();
   event.stopPropagation();
   refreshArea();
   const oldValue = internalRotation.value;
   const step = normalizeKeyboardStep(props.keyboardStep) * (event.shiftKey ? 10 : 1);
-  const next =
-    event.key === 'Home' ? 0 : oldValue + (event.key === 'ArrowLeft' ? -step : step);
+  const raw = event.key === 'Home' ? 0 : oldValue + (event.key === 'ArrowLeft' ? -step : step);
+  const next = snapRotationAngle(raw, props.rotationSnapAngles ?? [], props.rotationSnapThreshold);
   emit('rotate-start', event, oldValue);
   const value = commitRotation(constrainRotation(oldValue, next));
   emit('rotate-stop', event, oldValue, value);

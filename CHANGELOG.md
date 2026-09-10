@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 更新项目计划书，明确 v3.2.0 集中修复旋转碰撞及其它已确认问题，并规划 v3.3.0–v3.5.0 的新增能力、任务状态、依赖关系和验收标准；计划功能尚未实现
 
+## [3.3.0] - 2026-09-10
+
+### Added
+
+- FEAT-33-01 新增 `resizeMode`（`'local-delta' | 'fixed-anchor'`，默认 `local-delta`）：固定锚点模式把角手柄的对角点、边手柄的对边中点钉在旋转后的世界坐标上，尺寸由指针位置反解，旋转下方框仍保持锚点稳定；覆盖比例锁定与最小/最大尺寸限制
+- FEAT-33-02 新增 `canRotate` 旋转前置守卫：拒绝时不激活、不修改模型、不发送 `rotate-start`，覆盖指针与键盘入口
+- FEAT-33-03 新增 `rotationSnapAngles` 与 `rotationSnapThreshold`（默认关闭）：候选角度吸附，且吸附结果仍经过边界与碰撞约束，不能借吸附穿过障碍物
+- FEAT-33-04 新增 `collisionTargets`：碰撞障碍物与吸附对象可分别配置；未传沿用 `snapTargets`，显式空数组表示没有碰撞目标
+
 ## [3.2.0] - 2026-09-10
 
 > 集中修复版本。**破坏性变更：**precise 旋转碰撞成为默认行为（见下），是本计划对既有次版本

@@ -1,9 +1,4 @@
-import type {
-  GuidesEventPayload,
-  MovableBoxRect,
-  SnapPoint,
-  SnapTarget
-} from '../types';
+import type { GuidesEventPayload, MovableBoxRect, SnapPoint, SnapTarget } from '../types';
 
 export type SnapStrategy = 'alignment' | 'spacing';
 
@@ -208,7 +203,8 @@ export function snapToElements(
   const bottom = current.top + current.height;
   const centerX = current.left + current.width / 2;
   const centerY = current.top + current.height / 2;
-  const strategies = options.priority && options.priority.length > 0 ? options.priority : DEFAULT_PRIORITY;
+  const strategies =
+    options.priority && options.priority.length > 0 ? options.priority : DEFAULT_PRIORITY;
   const needsAlignment = strategies.includes('alignment');
   const needsSpacing = strategies.includes('spacing');
   const passesFilter = (target: SnapTarget, axis: 'horizontal' | 'vertical') =>
@@ -231,7 +227,8 @@ export function snapToElements(
     return enabled;
   };
 
-  let alignmentResolution: { x: AlignmentCandidate | null; y: AlignmentCandidate | null } | null = null;
+  let alignmentResolution: { x: AlignmentCandidate | null; y: AlignmentCandidate | null } | null =
+    null;
   const computeAlignment = () => {
     let nearestX: AlignmentCandidate | null = null;
     let nearestY: AlignmentCandidate | null = null;
@@ -354,7 +351,13 @@ export function snapToElements(
     if (!needsSpacing) return null;
     if (!spacingEntriesComputed) computeSpacingEntries();
     return axis === 'horizontal'
-      ? spacingCandidatesForAxis('horizontal', current.left, current.width, limit, horizontalEntries)
+      ? spacingCandidatesForAxis(
+          'horizontal',
+          current.left,
+          current.width,
+          limit,
+          horizontalEntries
+        )
       : spacingCandidatesForAxis('vertical', current.top, current.height, limit, verticalEntries);
   };
 
@@ -373,8 +376,8 @@ export function snapToElements(
 
   const xAlignment = horizontal?.candidate ?? null;
   const yAlignment = vertical?.candidate ?? null;
-  const points = [xAlignment?.point, yAlignment?.point].filter(
-    (point): point is SnapPoint => Boolean(point)
+  const points = [xAlignment?.point, yAlignment?.point].filter((point): point is SnapPoint =>
+    Boolean(point)
   );
   const spacing = [horizontal?.spacingInfo, vertical?.spacingInfo].filter(
     (info): info is SnapSpacingInfo => Boolean(info)
