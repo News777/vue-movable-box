@@ -120,6 +120,7 @@ pnpm dev
 | `snapFilter`         | `(target, axis) => boolean`                                  | `undefined`                       | 返回 false 可在对应轴（`horizontal` / `vertical`）上排除该吸附目标    |
 | `snapPriority`       | `('alignment' \| 'spacing')[]`                               | `['alignment','spacing']`         | 每个轴的策略咨询顺序；阈值内首个产出候选的策略生效                    |
 | `collisionEnabled`   | `boolean`                                                    | `false`                           | 对 `snapTargets` 启用碰撞检测                                         |
+| `collisionMode`      | `'precise' \| 'aabb'`                                        | `'precise'`                       | `'precise'` 按双方真实旋转矩形做连续碰撞检测；`'aabb'` 保留 3.2 之前的近似行为 |
 | `allowOverlap`       | `boolean`                                                    | `false`                           | 检测到碰撞时是否仍允许重叠                                            |
 | **方向控制**         |                                                              |                                   |                                                                       |
 | `dragDirections`     | `string[]`                                                   | `['top','bottom','left','right']` | 允许拖拽的方向                                                        |
@@ -206,6 +207,8 @@ interface CollisionEventPayload {
   colliding: boolean;
   direction?: 'left' | 'right' | 'top' | 'bottom';
   targetId?: string;
+  /** 容器像素坐标系中由障碍物指向当前方框的单位法线（precise 模式） */
+  normal?: { x: number; y: number };
 }
 ```
 
@@ -332,7 +335,21 @@ boxRef.value.cancelInteraction();
 />
 ```
 
-`otherBoxes` 中的每项包含 `left`、`top`、`width`、`height` 和可选 `id`，组件会自动显示对齐辅助线。边缘接触不算碰撞；关闭重叠时，拖拽或缩放保持在最后一个合法矩形，初始已重叠的元素只允许向总重叠面积减小的方向移动。多目标碰撞以重叠面积最大的目标决定 `direction` 和 `targetId`；开启 `allowOverlap` 会提交候选矩形，但仍会上报碰撞。
+`otherBoxes` 中的每项包含 `left`、`top`、`width`、`height`、可选 `id`，自 3.2.0 起还可选
+`rotate` 与 `transformOrigin` 描述目标真实旋转轮廓。组件会自动显示对齐辅助线。边缘接触不算碰撞；
+关闭重叠时，拖拽或缩放保持在最后一个合法矩形，初始已重叠的元素只允许向总重叠面积减小的方向移动。
+多目标碰撞以重叠面积最大的目标决定 `direction`、`normal` 和 `targetId`；开启 `allowOverlap`
+会提交候选矩形，但仍会上报碰撞。
+
+自 3.2.0 起，碰撞默认采用 `collisionMode="precise"`：双方都以真实旋转矩形（位置、尺寸、角度、
+变换原点）参与计算；平移沿整段运动路径做连续碰撞检测（高速拖拽无法穿过目标）；被旋转边缘挡住
+的拖拽会沿该边缘的切线继续滑动；缩放与旋转路径全程检测，角点无法在中途扫过障碍物。碰撞载荷的
+`normal` 是容器像素坐标系中由障碍物指向当前方框的单位法线，`direction` 按法线主轴映射。设置
+`collision-mode="aabb"` 可退回 3.2 之前的轴对齐近似行为作为迁移入口——该模式忽略目标的旋转
+角度，也不上报 `normal`。
+
+> **3.2.0 破坏性变更：**precise 碰撞成为默认行为，取代此前 3.x 的 AABB 近似。凡是旋转轮廓与
+> AABB 有差异的场景，结果都会不同。迁移期间可用 `collision-mode="aabb"` 获得旧行为。
 
 #### 等间距辅助线
 
@@ -382,12 +399,16 @@ boxRef.value.cancelInteraction();
   边手柄只收缩被拖拽的轴，角手柄与 `ratioLock` 沿拖拽射线等比收缩，直到 AABB 能放入区域，再
   钳制到区域内；`minWidth` / `minHeight` 下限优先于收缩，残余溢出通过 `out-of-bounds` 上报。
 - **元素吸附**（对齐与等间距）在 AABB 上求值，吸附位移按 1:1 映射回未旋转矩形。
-- **碰撞**以 AABB 与未旋转的 `snapTargets` 矩形求交。
+- **碰撞**（自 3.2.0 起默认 `collisionMode="precise"`）按当前方框与声明了 `rotate` /
+  `transformOrigin` 的目标的真实旋转轮廓求解，平移使用连续碰撞检测，缩放与旋转全程检测路径。
+  `collisionMode="aabb"` 保留旧的近似行为：当前方框 AABB 与未旋转目标矩形求交。
 - **网格吸附**继续对齐未旋转的左上角。
 - 平移（指针拖拽、键盘移动、组合移动）不受旋转影响。
-- 吸附辅助线渲染在方框元素内部、随之一起旋转，`rotate ≠ 0` 时虚线不一定精确落在目标边上。
-- `unitType="%"` 时，AABB 会先把矩形和 px 变换原点换算到父容器像素空间，完成计算后再
-  转回百分点；旋转缩放的输入位移仍沿用组件的百分比坐标近似模型。
+- 吸附辅助线渲染在随方框逆旋转的呈现层中，`rotate ≠ 0` 时虚线仍与容器坐标轴对齐、精确落在
+  目标位置上（3.2.0 修复；此前辅助线随方框一起旋转）。
+- `unitType="%"` 时，几何计算会先把矩形和 px 变换原点换算到父容器像素空间，完成计算后再
+  转回百分点。自 3.2.0 起，旋转缩放的输入位移也先在像素空间完成旋转变换，再映射到按轴区分的
+  百分点单位，斜向手柄拖动的宽高分配不再混淆两轴。
 
 `rotate: 0` 的方框与 2.x 行为完全一致，升级无需改动。
 

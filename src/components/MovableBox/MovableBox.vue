@@ -18,18 +18,20 @@
     @focus="handleBoxFocus"
     @keydown="handleKeyDown"
   >
-    <div
-      v-for="(guide, index) in guides.vertical"
-      :key="`vertical-${index}`"
-      class="movable-box-guide movable-box-guide--vertical"
-      :style="verticalGuideStyle(guide)"
-    ></div>
-    <div
-      v-for="(guide, index) in guides.horizontal"
-      :key="`horizontal-${index}`"
-      class="movable-box-guide movable-box-guide--horizontal"
-      :style="horizontalGuideStyle(guide)"
-    ></div>
+    <div class="movable-box-guides-layer" :style="guidesLayerStyle" aria-hidden="true">
+      <div
+        v-for="(guide, index) in guides.vertical"
+        :key="`vertical-${index}`"
+        class="movable-box-guide movable-box-guide--vertical"
+        :style="verticalGuideStyle(guide)"
+      ></div>
+      <div
+        v-for="(guide, index) in guides.horizontal"
+        :key="`horizontal-${index}`"
+        class="movable-box-guide movable-box-guide--horizontal"
+        :style="horizontalGuideStyle(guide)"
+      ></div>
+    </div>
 
     <div
       v-show="state.active && rotatable && !disabled && !initRect"
@@ -100,7 +102,8 @@ import {
   useCollision,
   useGrid,
   useKeyboard,
-  useSnap
+  useSnap,
+  type OrientedCollisionResult
 } from './composables';
 import { asNumber, clamp, sameRect } from './core/box-geometry';
 import {
@@ -126,6 +129,8 @@ import type {
   SnapEventPayload
 } from '../../types/MovableBox';
 import type { SnapAxes, SnapResult } from './utils/snap';
+import type { OrientedRect } from './utils/oriented';
+import { orientedAABB, orientedOverlap } from './utils/oriented';
 import { addEvent, deepClone, keepDecimalsToNum, removeEvent, setValUnit, valIsNaN } from './utils';
 
 const props = defineProps({
@@ -199,6 +204,14 @@ const props = defineProps({
   },
   collisionEnabled: { type: Boolean, default: false },
   allowOverlap: { type: Boolean, default: false },
+  /**
+   * Collision semantics: 'precise' (default since v3.2.0) resolves against true rotated
+   * contours with continuous collision detection; 'aabb' keeps the pre-3.2 behavior.
+   */
+  collisionMode: {
+    type: String as PropType<'precise' | 'aabb'>,
+    default: 'precise'
+  },
   snapTargets: { type: Array as PropType<SnapTarget[]>, default: () => [] },
   /** Stable identifier used by a surrounding MovableGroup; auto-generated when omitted. */
   memberId: String,
@@ -528,6 +541,233 @@ const geometryProbe = (rect: ExtendsMovableBox) => {
   };
 };
 
+// --- Precise collision geometry (collisionMode="precise") ---
+// Oriented rectangles live in container pixel space so both boxes and targets with mixed
+// px/% models resolve against one true geometric shape.
+
+const orientedFromPlane = (
+  plane: { left: number; top: number; width: number; height: number },
+  angle: number,
+  originSpec: string
+): OrientedRect => {
+  const scale = getPlaneScale();
+  const left = plane.left * scale.x;
+  const top = plane.top * scale.y;
+  const width = plane.width * scale.x;
+  const height = plane.height * scale.y;
+  return {
+    left,
+    top,
+    width,
+    height,
+    angle,
+    origin: resolveTransformOrigin(originSpec, width, height)
+  };
+};
+
+const selfOriented = (rect: ExtendsMovableBox, angle = rotationAngle.value): OrientedRect =>
+  orientedFromPlane(numericPlane(rect), angle, props.transformOrigin);
+
+const orientedSnapTarget = (target: SnapTarget): OrientedRect => {
+  const scale = getPlaneScale();
+  const plane = {
+    left: asNumber(target.left) * scale.x,
+    top: asNumber(target.top) * scale.y,
+    width: asNumber(target.width) * scale.x,
+    height: asNumber(target.height) * scale.y
+  };
+  return {
+    ...plane,
+    id: target.id,
+    angle: normalizeAngle(target.rotate ?? 0),
+    origin: resolveTransformOrigin(target.transformOrigin ?? 'center', plane.width, plane.height)
+  };
+};
+
+const orientedSnapTargets = (): OrientedRect[] =>
+  externalSnapTargets().map(orientedSnapTarget);
+
+/** Snap targets described by their visual (rotated AABB) contour, back in model units. */
+const visualSnapTargets = () => {
+  if (!props.snapToElements) return externalSnapTargets();
+  const scale = getPlaneScale();
+  return externalSnapTargets().map(target => {
+    if (!normalizeAngle(target.rotate ?? 0)) return target;
+    const box = orientedAABB(orientedSnapTarget(target));
+    return {
+      left: box.left / scale.x,
+      top: box.top / scale.y,
+      width: box.width / scale.x,
+      height: box.height / scale.y,
+      id: target.id
+    };
+  });
+};
+
+const collisionConstrains = () =>
+  props.collisionEnabled && !props.allowOverlap && isPreciseCollision.value;
+
+// Rounding a resolved contact back onto the model grid can leave a sub-unit penetration.
+// Re-verify the rounded rectangle and retreat toward the previous rect until it is safe;
+// if nothing in between is safe, keep the last safe state. When the previous rect already
+// overlapped a target, "safe" means a strictly smaller overlap (gradual escape) instead
+// of full separation.
+const roundedSafeRect = (
+  resolved: ExtendsMovableBox,
+  previous: ExtendsMovableBox,
+  targets: OrientedRect[]
+): ExtendsMovableBox => {
+  const overlapTotal = (rect: ExtendsMovableBox) => {
+    const oriented = selfOriented(rect);
+    let total = 0;
+    for (const target of targets) {
+      const overlap = orientedOverlap(oriented, target);
+      if (overlap.overlapping) total += overlap.overlapArea;
+    }
+    return total;
+  };
+  const previousArea = overlapTotal(previous);
+  const verify = (rect: ExtendsMovableBox) =>
+    previousArea > 0 ? overlapTotal(rect) < previousArea : overlapTotal(rect) === 0;
+  if (verify(resolved)) return resolved;
+  // Retreat the position only: shrinking width/height here could drop the rectangle
+  // below its configured minimum sizes, which position retreat avoids.
+  for (let fraction = 0.8; fraction > 0.01; fraction -= 0.2) {
+    const retreated = {
+      ...resolved,
+      left: roundValue(
+        asNumber(previous.left) + (asNumber(resolved.left) - asNumber(previous.left)) * fraction
+      ),
+      top: roundValue(
+        asNumber(previous.top) + (asNumber(resolved.top) - asNumber(previous.top)) * fraction
+      )
+    };
+    if (verify(retreated)) return retreated;
+  }
+  return previous;
+};
+
+const resolveCollisionPrecise = (
+  candidate: ExtendsMovableBox,
+  previous: ExtendsMovableBox,
+  resolution: 'path' | 'slide'
+) => {
+  const targets = orientedSnapTargets();
+  const from = selfOriented(previous);
+  const to = selfOriented(candidate);
+  const result =
+    resolution === 'slide'
+      ? collision.resolveOrientedTranslation(from, to, targets)
+      : collision.resolveOrientedChange(from, to, targets);
+  publishCollision(result);
+  if (!result.accepted) return null;
+  const scale = getPlaneScale();
+  const resolved = {
+    ...candidate,
+    left: roundValue(result.rect.left / scale.x),
+    top: roundValue(result.rect.top / scale.y),
+    width: roundValue(result.rect.width / scale.x),
+    height: roundValue(result.rect.height / scale.y)
+  };
+  if (!collisionConstrains()) return resolved;
+  return roundedSafeRect(resolved, previous, targets);
+};
+
+// --- Rotation constraints (precise mode) ---
+// Pointer and keyboard rotation walk the whole angle path: bounds use the visual AABB and
+// collisions use the true rotated contour, so a rotation cannot swing through obstacles.
+
+const rotationCollides = () =>
+  props.collisionEnabled && !props.allowOverlap && isPreciseCollision.value;
+
+const rotationOutOfBoundsAt = (angle: number): boolean => {
+  if (!props.limitAreaForParent || !state.parentElement) return false;
+  const edges = getAreaEdges();
+  const box = orientedAABB(selfOriented(internalRect.value, angle));
+  // The oriented box lives in pixel space; area edges use model units (px or %).
+  const scale = getPlaneScale();
+  const left = box.left / scale.x;
+  const top = box.top / scale.y;
+  const width = box.width / scale.x;
+  const height = box.height / scale.y;
+  const epsilon = 1e-7;
+  return (
+    left < edges.minLeft - epsilon ||
+    left + width > edges.maxRight + epsilon ||
+    top < edges.minTop - epsilon ||
+    top + height > edges.maxBottom + epsilon
+  );
+};
+
+const rotationOverlapAreaAt = (angle: number, targets: OrientedRect[]): number => {
+  if (!rotationCollides()) return 0;
+  const oriented = selfOriented(internalRect.value, angle);
+  let total = 0;
+  for (const target of targets) {
+    total += orientedOverlap(oriented, target).overlapArea;
+  }
+  return total;
+};
+
+// Targets are resolved once per rotation so sampling (48 steps + bisection) does not
+// rebuild the oriented geometry for every sample.
+const rotationViolatesAt = (angle: number, targets: OrientedRect[]): boolean => {
+  if (rotationOutOfBoundsAt(angle)) return true;
+  if (!rotationCollides() || targets.length === 0) return false;
+  const oriented = selfOriented(internalRect.value, angle);
+  return targets.some(target => orientedOverlap(oriented, target).overlapping);
+};
+
+// Sample at most every two degrees so even large pointer swings cannot step over an obstacle.
+const rotationStepCount = (from: number, to: number): number =>
+  Math.max(48, Math.ceil(Math.abs(to - from) / 2));
+
+// Walks the angle path with uniform sampling plus bisection refinement and returns the
+// largest safe angle. Start and end being safe does not imply the path is: a corner can
+// sweep through an obstacle mid-rotation and come out clear on the other side.
+const lastSafeRotationAngle = (from: number, to: number, targets: OrientedRect[]): number => {
+  let safe = from;
+  let upper = to;
+  let blocked = false;
+  const steps = rotationStepCount(from, to);
+  for (let index = 1; index <= steps; index += 1) {
+    const angle = from + ((to - from) * index) / steps;
+    if (rotationViolatesAt(angle, targets)) {
+      upper = angle;
+      blocked = true;
+      break;
+    }
+    safe = angle;
+  }
+  if (!blocked) return to;
+  let lower = safe;
+  for (let index = 0; index < 20; index += 1) {
+    const middle = (lower + upper) / 2;
+    if (rotationViolatesAt(middle, targets)) upper = middle;
+    else lower = middle;
+  }
+  return lower;
+};
+
+const constrainRotation = (from: number, to: number): number => {
+  if (!isPreciseCollision.value) return normalizeAngle(to);
+  if (Math.abs(to - from) < 1e-9) return normalizeAngle(to);
+  const targets = orientedSnapTargets();
+  if (rotationViolatesAt(from, targets)) {
+    // Already violating (out of bounds or overlapping): scan toward the requested angle
+    // for the first fully safe angle so the interaction can recover instead of locking.
+    const steps = rotationStepCount(from, to);
+    for (let index = 1; index <= steps; index += 1) {
+      const angle = from + ((to - from) * index) / steps;
+      if (!rotationViolatesAt(angle, targets)) {
+        return normalizeAngle(roundValue(angle));
+      }
+    }
+    return normalizeAngle(from);
+  }
+  return normalizeAngle(roundValue(lastSafeRotationAngle(from, to, targets)));
+};
+
 // Shrinks an over-large rotated rectangle so its AABB fits the area; clamping alone
 // could only translate it, leaving part of the box outside the bounds. Reductions
 // prefer the dragged axis (edge handles shrink only that axis), while corner handles
@@ -799,6 +1039,7 @@ const memberIdentity =
 let groupDragLeader = false;
 const memberApi: GroupMemberApi = {
   getRect: () => cloneRect(internalRect.value),
+  getVisualRect: () => geometryProbe(cloneRect(internalRect.value)),
   translateTo: rect => {
     commitRect(rect);
   },
@@ -816,13 +1057,17 @@ const externalSnapTargets = () =>
 
 const roundValue = (value: number) =>
   props.isKeepDecimals ? keepDecimalsToNum(value, 0, props.decimalPlaces) : Math.round(value);
+// Converts a pointer displacement that is already expressed in unscaled canvas pixels
+// into model units for one axis.
+const scaledPixelToModel = (pixels: number, axis: 'horizontal' | 'vertical') => {
+  if (!isPercent.value) return roundValue(pixels);
+  const dimension = axis === 'horizontal' ? state.parentWidth : state.parentHeight;
+  return dimension > 0 ? roundValue((pixels / dimension) * 100) : 0;
+};
 const scaledDelta = (value: number, axis: 'horizontal' | 'vertical') => {
   const configuredScale = valIsNaN(props.scale, 1);
   const scaled = value / (configuredScale === 0 ? 1 : configuredScale);
-  if (!isPercent.value) return roundValue(scaled);
-
-  const dimension = axis === 'horizontal' ? state.parentWidth : state.parentHeight;
-  return dimension > 0 ? roundValue((scaled / dimension) * 100) : 0;
+  return scaledPixelToModel(scaled, axis);
 };
 
 const grid = useGrid(() => ({ snapToGrid: props.snapToGrid, gridSize: props.gridSize }));
@@ -832,6 +1077,7 @@ const snap = useSnap(() => ({
   filter: props.snapFilter,
   priority: props.snapPriority
 }));
+const isPreciseCollision = computed(() => props.collisionMode !== 'aabb');
 const collision = useCollision(() => ({
   enabled: props.collisionEnabled,
   allowOverlap: props.allowOverlap
@@ -881,13 +1127,14 @@ const publishSnap = (result: SnapResult) => {
   }
 };
 
-const publishCollision = (result: ReturnType<typeof collision.resolveCandidate>) => {
+const publishCollision = (result: { dominant: OrientedCollisionResult | null }) => {
   const dominant = result.dominant;
   const payload: CollisionEventPayload = dominant
     ? {
         colliding: true,
         direction: dominant.direction,
-        targetId: dominant.targetId
+        targetId: dominant.targetId,
+        normal: dominant.normal ? { ...dominant.normal } : undefined
       }
     : { colliding: false };
   const key = JSON.stringify(payload);
@@ -913,6 +1160,9 @@ const resolveCollision = (
   previous: ExtendsMovableBox,
   resolution: 'path' | 'slide' = 'path'
 ) => {
+  if (isPreciseCollision.value) {
+    return resolveCollisionPrecise(candidate, previous, resolution);
+  }
   const candidateProbe = geometryProbe(candidate);
   const result = collision.resolveCandidate(
     candidateProbe,
@@ -977,7 +1227,7 @@ const applyInteractivePosition = (
 
   if (useElementSnap) {
     const probe = geometryProbe(next);
-    snapResult = snap.resolveSnap(probe, externalSnapTargets(), axes);
+    snapResult = snap.resolveSnap(probe, visualSnapTargets(), axes);
     if (rotationAngle.value) {
       next = {
         ...next,
@@ -1198,7 +1448,7 @@ const processInteraction = (source: PointerEvent) => {
       state.rotationOriginY
     );
     const delta = normalizeAngle(pointerAngle - state.rotationStartPointerAngle);
-    commitRotation(state.beforeRotation + delta);
+    commitRotation(constrainRotation(state.beforeRotation, state.beforeRotation + delta));
     return;
   }
 
@@ -1248,7 +1498,19 @@ const processInteraction = (source: PointerEvent) => {
       spacing: []
     });
     snap.clearGuides();
-    const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
+    // Resize deltas rotate in pixel space first and only then map onto model units:
+    // rotating raw percent values would conflate the width-based and height-based axes.
+    const configuredScale = valIsNaN(props.scale, 1);
+    const divisor = configuredScale === 0 ? 1 : configuredScale;
+    const localPx = deltaToLocal(
+      (source.clientX - state.initX) / divisor,
+      (source.clientY - state.initY) / divisor,
+      rotationAngle.value
+    );
+    const localDelta = {
+      x: scaledPixelToModel(localPx.x, 'horizontal'),
+      y: scaledPixelToModel(localPx.y, 'vertical')
+    };
     let candidate = resizeFromHandle(
       state.beforeInteraction,
       state.handle,
@@ -1498,6 +1760,7 @@ const handleRotationPointerDown = (source: PointerEvent) => {
   if (!source.isPrimary || source.button !== 0) return;
   if (props.disabled || props.initRect || !props.rotatable) return;
   if (state.isInteracting) return;
+  refreshArea();
   const origin = rotationOriginInViewport();
   if (!origin) return;
 
@@ -1602,7 +1865,12 @@ const resizeWithKeyboard = (handle: HandlePosition, direction: DragDirection, di
   if (props.canResize?.(cloneRect(previous), handle) === false) return;
   const deltaX = direction === 'left' ? -distance : direction === 'right' ? distance : 0;
   const deltaY = direction === 'top' ? -distance : direction === 'bottom' ? distance : 0;
-  const localDelta = deltaToLocal(deltaX, deltaY, rotationAngle.value);
+  // Rotate the step in pixel space, then map back onto model units (see pointer resize).
+  const localPx = deltaToLocal(toPixelX(deltaX), toPixelY(deltaY), rotationAngle.value);
+  const localDelta = {
+    x: scaledPixelToModel(localPx.x, 'horizontal'),
+    y: scaledPixelToModel(localPx.y, 'vertical')
+  };
   let candidate = resizeFromHandle(previous, handle, localDelta.x, localDelta.y);
   if (rotationAngle.value) {
     candidate = fitRotatedSizeToArea(candidate, handle);
@@ -1727,26 +1995,53 @@ const handleRotationKeyDown = (event: KeyboardEvent) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
   event.preventDefault();
   event.stopPropagation();
+  refreshArea();
   const oldValue = internalRotation.value;
   const step = normalizeKeyboardStep(props.keyboardStep) * (event.shiftKey ? 10 : 1);
   const next =
     event.key === 'Home' ? 0 : oldValue + (event.key === 'ArrowLeft' ? -step : step);
   emit('rotate-start', event, oldValue);
-  const value = commitRotation(next);
+  const value = commitRotation(constrainRotation(oldValue, next));
   emit('rotate-stop', event, oldValue, value);
 };
 
 const toPixelX = (value: number) => (isPercent.value ? (value / 100) * state.parentWidth : value);
 const toPixelY = (value: number) => (isPercent.value ? (value / 100) * state.parentHeight : value);
+// Guides render in a presentation layer that spans the area and counter-rotates against
+// the box, so lines stay aligned with the container's axes while the box rotates. Guide
+// coordinates are container-space positions; the layer is offset by the box's left/top
+// and rotated about the box's transform origin, which cancels the box rotation exactly.
+const guidesLayerStyle = computed<CSSProperties>(() => {
+  const offsetLeft = toPixelX(asNumber(internalRect.value.left));
+  const offsetTop = toPixelY(asNumber(internalRect.value.top));
+  const style: CSSProperties = {
+    left: `${-offsetLeft}px`,
+    top: `${-offsetTop}px`,
+    width: `${state.parentWidth}px`,
+    height: `${state.parentHeight}px`
+  };
+  const angle = rotationAngle.value;
+  if (angle) {
+    const scale = getPlaneScale();
+    const origin = resolveTransformOrigin(
+      props.transformOrigin,
+      asNumber(internalRect.value.width) * scale.x,
+      asNumber(internalRect.value.height) * scale.y
+    );
+    style.transform = `rotate(${-angle}deg)`;
+    style.transformOrigin = `${origin.x + offsetLeft}px ${origin.y + offsetTop}px`;
+  }
+  return style;
+});
 const verticalGuideStyle = (value: number): CSSProperties => ({
-  left: `${toPixelX(value) - toPixelX(asNumber(internalRect.value.left))}px`,
-  top: `${-toPixelY(asNumber(internalRect.value.top))}px`,
+  left: `${toPixelX(value)}px`,
+  top: '0px',
   height: `${state.parentHeight}px`,
   borderColor: props.theme
 });
 const horizontalGuideStyle = (value: number): CSSProperties => ({
-  top: `${toPixelY(value) - toPixelY(asNumber(internalRect.value.top))}px`,
-  left: `${-toPixelX(asNumber(internalRect.value.left))}px`,
+  top: `${toPixelY(value)}px`,
+  left: '0px',
   width: `${state.parentWidth}px`,
   borderColor: props.theme
 });
@@ -1832,6 +2127,12 @@ onUnmounted(() => {
 .auto-draggable.is-dragging {
   cursor: move !important;
   z-index: 9999 !important;
+}
+
+.movable-box-guides-layer {
+  position: absolute;
+  z-index: 10000;
+  pointer-events: none !important;
 }
 
 .movable-box-guide {

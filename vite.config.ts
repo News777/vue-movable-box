@@ -1,5 +1,6 @@
 import { fileURLToPath, URL } from 'node:url';
 import path from 'path';
+import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import vueJsx from '@vitejs/plugin-vue-jsx';
@@ -8,6 +9,8 @@ import dts from 'vite-plugin-dts';
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const resolvePath = (p: string) => path.resolve(__dirname, p);
+const require = createRequire(import.meta.url);
+const packageVersion: string = require('./package.json').version;
 
 export default defineConfig({
   plugins: [
@@ -32,6 +35,10 @@ export default defineConfig({
       }
     })
   ],
+  // package.json is the single source of truth for the runtime version export.
+  define: {
+    __MOVABLE_BOX_VERSION__: JSON.stringify(packageVersion)
+  },
   resolve: {
     alias: {
       '@': resolvePath('src')
@@ -43,7 +50,8 @@ export default defineConfig({
     lib: {
       entry: resolvePath('src/index.ts'),
       name: 'VueMovableBox',
-      fileName: format => `vue-movable-box.${format}.js`
+      formats: ['es', 'cjs', 'umd'],
+      fileName: format => (format === 'cjs' ? 'vue-movable-box.cjs' : `vue-movable-box.${format}.js`)
     },
     rollupOptions: {
       external: ['vue', 'decimal.js'],

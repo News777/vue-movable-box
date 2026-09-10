@@ -164,6 +164,14 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: BooleanConstructor;
         default: boolean;
     };
+    /**
+     * Collision semantics: 'precise' (default since v3.2.0) resolves against true rotated
+     * contours with continuous collision detection; 'aabb' keeps the pre-3.2 behavior.
+     */
+    collisionMode: {
+        type: PropType<"precise" | "aabb">;
+        default: string;
+    };
     snapTargets: {
         type: PropType<SnapTarget[]>;
         default: () => never[];
@@ -385,6 +393,14 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
         type: BooleanConstructor;
         default: boolean;
     };
+    /**
+     * Collision semantics: 'precise' (default since v3.2.0) resolves against true rotated
+     * contours with continuous collision detection; 'aabb' keeps the pre-3.2 behavior.
+     */
+    collisionMode: {
+        type: PropType<"precise" | "aabb">;
+        default: string;
+    };
     snapTargets: {
         type: PropType<SnapTarget[]>;
         default: () => never[];
@@ -472,6 +488,7 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     snapPriority: SnapStrategy[];
     collisionEnabled: boolean;
     allowOverlap: boolean;
+    collisionMode: "precise" | "aabb";
     snapTargets: SnapTarget[];
     rotate: string | number;
     rotatable: boolean;

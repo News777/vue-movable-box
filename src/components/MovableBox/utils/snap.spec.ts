@@ -120,3 +120,68 @@ describe('snap utilities', () => {
     expect(spacingFirst.spacing[0]).toMatchObject({ axis: 'horizontal', gap: 75 });
   });
 });
+
+// --- v3.2.0: lazy strategy evaluation ---
+// Each strategy pass funnels targets through one rect read (4 fields), so a skipped
+// strategy shows up as half the property reads: one pass reads 8 fields for two
+// targets, two passes read 16.
+
+const countingTarget = (rect: Record<string, number>, reads: string[]) => {
+  const proxy: Record<string, unknown> = {};
+  for (const key of ['left', 'top', 'width', 'height']) {
+    Object.defineProperty(proxy, key, {
+      enumerable: true,
+      get: () => {
+        reads.push(key);
+        return rect[key];
+      }
+    });
+  }
+  return proxy as unknown as { left: number; top: number; width: number; height: number; id?: string };
+};
+
+describe('lazy snap strategy evaluation', () => {
+  const current = { left: 100, top: 100, width: 20, height: 20 };
+  const alignedRect = { left: 100, top: 500, width: 60, height: 40 };
+  const spacedRect = { left: 420, top: 500, width: 60, height: 40 };
+  const axes = { horizontal: true, vertical: false } as const;
+
+  const readsFor = (priority: string[], rect = alignedRect) => {
+    const reads: string[] = [];
+    snapToElements(
+      current,
+      [countingTarget(rect, reads), countingTarget(spacedRect, reads)],
+      10,
+      axes,
+      { priority: priority as ('alignment' | 'spacing')[] }
+    );
+    return reads.length;
+  };
+
+  it('skips the spacing pass when alignment resolves first', () => {
+    // An eager implementation would always run both passes: 16 reads.
+    expect(readsFor(['alignment', 'spacing'])).toBeLessThan(16);
+    expect(readsFor(['alignment'])).toBeLessThan(16);
+  });
+
+  it('skips the alignment pass when alignment is not in the priority', () => {
+    expect(readsFor(['spacing'])).toBeLessThan(16);
+  });
+
+  it('runs both passes when alignment misses', () => {
+    // The moving rect sits far from every alignment edge, so alignment fails and the
+    // spacing pass still runs and resolves the equal-gap position.
+    const reads: string[] = [];
+    const result = snapToElements(
+      { left: 275, top: 100, width: 20, height: 20 },
+      [countingTarget(alignedRect, reads), countingTarget(spacedRect, reads)],
+      10,
+      axes,
+      { priority: ['alignment', 'spacing'] }
+    );
+    expect(reads.length).toBe(16);
+    expect(result.snapped).toBe(true);
+    expect(result.spacing).toHaveLength(1);
+    expect(result.spacing[0].axis).toBe('horizontal');
+  });
+});

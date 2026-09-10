@@ -782,6 +782,25 @@ describe('MovableBox', () => {
     await pointerDrag(wrapper, [0, 0], [100, 100]);
 
     const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    // Precise collision slides the box flush around the target's corner along the
+    // contact tangent, so the drag completes without ever penetrating the obstacle.
+    expect(update).toMatchObject({ left: 100, top: 100 });
+    expect(wrapper.emitted('collision')?.[0]?.[0]).toMatchObject({
+      colliding: true,
+      targetId: 'target'
+    });
+  });
+
+  it('stops a diagonal drag at the corner in legacy aabb collision mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 20, height: 20 }),
+      collisionEnabled: true,
+      collisionMode: 'aabb',
+      snapTargets: [{ id: 'target', left: 50, top: 50, width: 20, height: 20 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [100, 100]);
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
     expect(update).toMatchObject({ left: 30, top: 30 });
     expect(wrapper.emitted('collision')?.[0]?.[0]).toMatchObject({
       colliding: true,
@@ -1543,5 +1562,246 @@ describe('MovableBox', () => {
     await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
 
     expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(31);
+  });
+
+  // --- v3.2.0: precise rotated-rectangle collision ---
+
+  const mountRotatedBox = (overrides: Record<string, unknown> = {}) => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 100, height: 100 }),
+      rotate: 45,
+      collisionEnabled: true,
+      ...overrides
+    });
+    return wrapper;
+  };
+
+  it('drags freely past a target that only the legacy AABB would report', async () => {
+    // The rotated 100x100 contour stays clear of the tiny corner box; the legacy AABB
+    // mode reports a collision and blocks the escape.
+    const wrapper = mountRotatedBox({
+      snapTargets: [{ id: 'corner', left: -20, top: -20, width: 5, height: 5 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [-2, 0]);
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ left: -2 });
+    expect(wrapper.emitted('collision')).toBeFalsy();
+  });
+
+  it('blocks the same drag in legacy aabb collision mode', async () => {
+    const wrapper = mountRotatedBox({
+      collisionMode: 'aabb',
+      snapTargets: [{ id: 'corner', left: -20, top: -20, width: 5, height: 5 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [-2, 0]);
+    expect(wrapper.emitted('update:modelValue')).toBeFalsy();
+  });
+
+  it('stops a drag that the legacy AABB mode would miss against a rotated target', async () => {
+    // The box starts clear of the diamond's right tip and drags left into it; legacy
+    // mode only compares against the unrotated 100x100 rect and lets the drag through.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 125, top: 45, width: 5, height: 10 }),
+      collisionEnabled: true,
+      snapTargets: [{ id: 'diamond', left: 0, top: 0, width: 100, height: 100, rotate: 45 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [-20, 0]);
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    // The drag stops when the box corner touches the diamond's upper-right edge
+    // (left about 121) instead of reaching the dragged position 105.
+    expect(update.left).toBeGreaterThan(115);
+    expect(update.left).toBeLessThanOrEqual(121);
+    expect(wrapper.emitted('collision')?.[0]?.[0]).toMatchObject({
+      colliding: true,
+      targetId: 'diamond'
+    });
+  });
+
+  it('lets the same drag pass in legacy aabb collision mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 125, top: 45, width: 5, height: 10 }),
+      collisionEnabled: true,
+      collisionMode: 'aabb',
+      snapTargets: [{ id: 'diamond', left: 0, top: 0, width: 100, height: 100, rotate: 45 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [-20, 0]);
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ left: 105 });
+  });
+
+  it('keeps keyboard rotation working in percent units', async () => {
+    // Regression: bounds for the rotated box were once compared in px against percent
+    // edges, which froze rotation entirely for any percent-mode box.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 10, width: 20, height: 20 }),
+      unitType: '%',
+      limitAreaForParent: true,
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(90);
+  });
+
+  it('does not constrain rotation when collision is disabled', async () => {
+    // snapTargets stay snap-only unless collisionEnabled turns them into obstacles.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 100, height: 100 }),
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90,
+      snapTargets: [{ id: 'blocker', left: 80, top: 0, width: 40, height: 40 }]
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(90);
+  });
+
+  it('allows rotation through targets when overlap is explicitly allowed', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 100, height: 100 }),
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90,
+      collisionEnabled: true,
+      allowOverlap: true,
+      snapTargets: [{ id: 'blocker', left: 80, top: 0, width: 40, height: 40 }]
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(90);
+  });
+
+  it('snaps onto a rotated target in percent units without unit mixing', async () => {
+    // Target (8%, 40%, 20x10) rotated 90deg has its visual AABB at left 14% of the
+    // 500px container; the box's left edge should align there in percent units.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 20, height: 20 }),
+      unitType: '%',
+      snapToElements: true,
+      snapThreshold: 20,
+      snapTargets: [{ id: 'rotated', left: 8, top: 40, width: 20, height: 10, rotate: 90 }]
+    });
+    // 12px of pointer travel round to 2 percent points of model delta on the 500px area.
+    // The rotated target's visual AABB spans left 14% to 22% in model units; the moving
+    // box's right edge lands flush on the target's visual right edge, so the snap fires.
+    // With px/model mixing this snap never resolves (px values read as percent points
+    // are far outside the threshold).
+    await pointerDrag(wrapper, [0, 0], [12, 0], '.auto-draggable', false);
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.left).toBe(2);
+    expect(wrapper.emitted('snap')?.at(-1)?.[0]).toMatchObject({
+      snapped: true,
+      targetId: 'rotated'
+    });
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+  });
+
+  it('recovers rotation when the start angle sits outside the bounds area', async () => {
+    // A 480x380 box in the 500x400 area only fits within about 2 degrees; rotating
+    // toward 0 from an out-of-bounds 10 degrees must recover to the first safe angle
+    // instead of locking the interaction.
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 10, width: 480, height: 380 }),
+      limitAreaForParent: true,
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 45,
+      rotate: 10
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowLeft' });
+    const value = wrapper.emitted('update:rotate')?.at(-1)?.[0] as number;
+    expect(value).toBeGreaterThanOrEqual(0);
+    expect(value).toBeLessThan(10);
+  });
+
+  it('reports the contact normal in the collision payload', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 50, height: 50 }),
+      collisionEnabled: true,
+      snapTargets: [{ id: 'target', left: 60, top: 0, width: 50, height: 50 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [120, 0]);
+    const payload = wrapper.emitted('collision')?.[0]?.[0] as Record<string, unknown>;
+    expect(payload.colliding).toBe(true);
+    const normal = payload.normal as { x: number; y: number };
+    expect(normal.x).toBeCloseTo(-1, 4);
+    expect(normal.y).toBeCloseTo(0, 4);
+    expect(payload.direction).toBe('left');
+  });
+
+  it('omits the contact normal in legacy aabb collision mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 50, height: 50 }),
+      collisionEnabled: true,
+      collisionMode: 'aabb',
+      snapTargets: [{ id: 'target', left: 60, top: 0, width: 50, height: 50 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [120, 0]);
+    const payload = wrapper.emitted('collision')?.[0]?.[0] as Record<string, unknown>;
+    expect(payload.colliding).toBe(true);
+    expect(payload.normal).toBeUndefined();
+  });
+
+  it('constrains keyboard rotation against a rotated collision target', async () => {
+    const wrapper = mountRotatedBox({
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90,
+      snapTargets: [{ id: 'blocker', left: 80, top: 0, width: 40, height: 40 }]
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    const value = wrapper.emitted('update:rotate')?.at(-1)?.[0] as number;
+    // A full 90-degree swing would sweep the corners through the blocker.
+    expect(value).toBeGreaterThan(0);
+    expect(value).toBeLessThan(90);
+  });
+
+  it('applies the full keyboard rotation when nothing blocks the path', async () => {
+    const wrapper = mountRotatedBox({
+      rotate: 0,
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90
+    });
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(90);
+  });
+
+  it('renders snap guides in a counter-rotated presentation layer', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 8, top: 100, width: 120, height: 80 }),
+      rotate: 30,
+      snapToElements: true,
+      snapThreshold: 30,
+      snapTargets: [{ id: 'edge', left: 10, top: 300, width: 100, height: 80 }]
+    });
+    await pointerDrag(wrapper, [0, 0], [1, 0], '.auto-draggable', false);
+    const layer = wrapper.get('.movable-box-guides-layer');
+    expect(layer.attributes('style')).toContain('rotate(-30deg)');
+    expect(layer.attributes('style')).toContain('width: 500px');
+    const guide = wrapper.get('.movable-box-guide--vertical');
+    // The snap resolves on the rotated box's visual probe: center-x aligns at 60.
+    expect(guide.attributes('style')).toContain('left: 60px');
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+  });
+
+  it('rotates resize deltas in pixel space before mapping onto percent units', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 10, width: 120, height: 80 }),
+      unitType: '%',
+      rotate: 90,
+      handles: ['br'],
+      resizeDirections: ['br']
+    });
+    // A 40px downward drag is horizontal in the box's local frame: +8% width (of 500px),
+    // no height change. Percent-first rotation would have produced +10% width.
+    await pointerDrag(wrapper, [130, 90], [130, 130], '.handle-br');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    expect(update.width).toBe(128);
+    expect(update.height).toBe(80);
   });
 });

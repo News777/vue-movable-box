@@ -120,6 +120,7 @@ Visit http://localhost:5173 for the interactive demo.
 | `snapFilter`          | `(target, axis) => boolean`                                  | `undefined`                       | Return false to exclude a target from snapping on `horizontal` / `vertical`                                  |
 | `snapPriority`        | `('alignment' \| 'spacing')[]`                               | `['alignment','spacing']`         | Strategy consultation order per axis; the first strategy with a candidate inside the threshold wins          |
 | `collisionEnabled`    | `boolean`                                                    | `false`                           | Detect collisions against `snapTargets`                                                                      |
+| `collisionMode`       | `'precise' \| 'aabb'`                                        | `'precise'`                       | `'precise'` resolves against true rotated contours with continuous collision detection; `'aabb'` keeps the pre-3.2 behavior |
 | `allowOverlap`        | `boolean`                                                    | `false`                           | Allow a colliding candidate to be committed                                                                  |
 | **Direction Control** |                                                              |                                   |                                                                                                              |
 | `dragDirections`      | `string[]`                                                   | `['top','bottom','left','right']` | Allowed drag directions                                                                                      |
@@ -206,6 +207,8 @@ interface CollisionEventPayload {
   colliding: boolean;
   direction?: 'left' | 'right' | 'top' | 'bottom';
   targetId?: string;
+  /** Unit normal in container pixel space pointing from the obstacle to the box (precise mode). */
+  normal?: { x: number; y: number };
 }
 ```
 
@@ -343,11 +346,27 @@ boxRef.value.cancelInteraction();
 />
 ```
 
-Each item in `otherBoxes` contains `left`, `top`, `width`, `height`, and an optional `id`.
-Alignment guides are rendered automatically. Touching edges are not a collision. With overlap
-disabled, dragging or resizing keeps the last valid rectangle; an initially overlapping box may
-only move when total overlap decreases. With multiple collisions, the largest overlap determines
-`direction` and `targetId`. Enabling `allowOverlap` commits the candidate but still reports it.
+Each item in `otherBoxes` contains `left`, `top`, `width`, `height`, an optional `id`, and —
+since 3.2.0 — optional `rotate` and `transformOrigin` describing the target's true rotated
+contour. Alignment guides are rendered automatically. Touching edges are not a collision. With
+overlap disabled, dragging or resizing keeps the last valid rectangle; an initially overlapping
+box may only move when total overlap decreases. With multiple collisions, the largest overlap
+determines `direction`, `normal`, and `targetId`. Enabling `allowOverlap` commits the candidate
+but still reports it.
+
+Since 3.2.0, collisions default to `collisionMode="precise"`: both boxes participate with their
+true rotated rectangles (position, size, angle, transform origin), translation uses continuous
+collision detection along the whole motion segment (fast drags cannot tunnel through a target),
+and drags blocked by a rotated edge keep sliding along that edge's tangent. Rotation and resize
+paths are checked throughout the entire change, so a corner cannot sweep through an obstacle
+mid-rotation. The payload's `normal` is the unit contact normal in container pixel space pointing
+from the obstacle toward the box; `direction` maps onto the normal's main axis. Set
+`collision-mode="aabb"` to restore the pre-3.2 axis-aligned approximation as a migration escape
+hatch — in that mode targets' angles are ignored and `normal` is not reported.
+
+> **Breaking change in 3.2.0:** precise collision is the default and supersedes the AABB
+> approximation of earlier 3.x releases. Results differ wherever a rotated shape's true contour
+> differs from its AABB. Use `collision-mode="aabb"` for the old behavior while migrating.
 
 #### Equal-Spacing Guides
 
@@ -406,14 +425,20 @@ Rotated geometry semantics (defined in 3.0.0):
   residual overflow is reported through `out-of-bounds`.
 - **Element snapping** (alignment and equal spacing) evaluates the AABB; the resulting shift is
   applied 1:1 to the unrotated rectangle.
-- **Collision** checks the AABB against the unrotated `snapTargets` rectangles.
+- **Collision** (default since 3.2.0, `collisionMode="precise"`) resolves against the true
+  rotated contours of the box and of targets that declare `rotate` / `transformOrigin`, with
+  continuous collision detection for translation and full-path checks for resize and rotation.
+  `collisionMode="aabb"` keeps the previous approximation: the box's AABB against unrotated
+  target rectangles.
 - **Grid snapping** continues to align the unrotated top-left corner.
 - Translation (pointer drag, keyboard move, group movement) is unaffected by rotation.
-- Snap guides render inside the box element and rotate with it, so with `rotate != 0` the dashed
-  guide lines may not sit exactly on the target edges.
-- With `unitType="%"`, AABB calculations convert the rectangle and px transform origin to the
-  parent's pixel space before converting the result back to percentage points. Rotated resize
-  input deltas continue to use the component's percentage-coordinate approximation.
+- Snap guides render in a presentation layer that counter-rotates against the box, so the
+  dashed lines stay aligned with the container axes at the exact target positions even when
+  the box is rotated (fixed in 3.2.0; they previously rotated with the box).
+- With `unitType="%"`, geometry converts the rectangle and px transform origin to the parent's
+  pixel space before converting results back to percentage points. Since 3.2.0, rotated resize
+  deltas are also rotated in pixel space first and only then mapped onto the per-axis percentage
+  units, so diagonal handle drags distribute width/height correctly.
 
 Boxes with `rotate: 0` behave exactly as in 2.x; upgrade requires no action.
 

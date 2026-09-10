@@ -60,14 +60,6 @@ interface SpacingCandidate {
   targetIds: (string | undefined)[];
 }
 
-interface AxisResolution {
-  candidate: AlignmentCandidate | null;
-  spacing: SpacingCandidate | null;
-  guides: number[];
-  spacingInfo: SnapSpacingInfo | null;
-  value: number | null;
-}
-
 const toFiniteNumber = (value: number | string): number | null => {
   if (typeof value === 'string' && value.trim() === '') return null;
   const converted = Number(value);
@@ -103,19 +95,32 @@ type Candidate = AlignmentCandidate | SpacingCandidate;
 
 const DEFAULT_PRIORITY: SnapStrategy[] = ['alignment', 'spacing'];
 
+interface AxisResolution {
+  candidate: AlignmentCandidate | null;
+  spacing: SpacingCandidate | null;
+  guides: number[];
+  spacingInfo: SnapSpacingInfo | null;
+  value: number | null;
+}
+
+/**
+ * Consults strategies in the configured order and stops at the first one producing a
+ * candidate within the threshold. Candidate thunks run at most once and only when their
+ * strategy is actually consulted, so disabled or superseded strategies cost nothing.
+ */
 const resolveAxis = (
   axis: 'horizontal' | 'vertical',
-  alignment: AlignmentCandidate | null,
-  spacing: SpacingCandidate | null,
   threshold: number,
-  priority: SnapStrategy[]
+  strategies: SnapStrategy[],
+  candidates: {
+    alignment: () => AlignmentCandidate | null;
+    spacing: () => SpacingCandidate | null;
+  }
 ): AxisResolution => {
-  const strategies = priority.length > 0 ? priority : DEFAULT_PRIORITY;
   for (const strategy of strategies) {
-    const candidate = strategy === 'alignment' ? alignment : spacing;
-    if (candidate && candidate.distance <= threshold) {
-      if (strategy === 'alignment') {
-        const picked = candidate as AlignmentCandidate;
+    if (strategy === 'alignment') {
+      const picked = candidates.alignment();
+      if (picked && picked.distance <= threshold) {
         return {
           candidate: picked,
           spacing: null,
@@ -124,7 +129,10 @@ const resolveAxis = (
           value: picked.value
         };
       }
-      const picked = candidate as SpacingCandidate;
+      continue;
+    }
+    const picked = candidates.spacing();
+    if (picked && picked.distance <= threshold) {
       return {
         candidate: null,
         spacing: picked,
@@ -142,6 +150,8 @@ const resolveAxis = (
   return { candidate: null, spacing: null, guides: [], spacingInfo: null, value: null };
 };
 
+// Entries arrive pre-filtered: `snapToElements` only collects targets whose filter passed
+// for the axis, so this function performs no filtering of its own.
 const spacingCandidatesForAxis = (
   axis: 'horizontal' | 'vertical',
   start: number,
@@ -198,139 +208,167 @@ export function snapToElements(
   const bottom = current.top + current.height;
   const centerX = current.left + current.width / 2;
   const centerY = current.top + current.height / 2;
-  const priority = options.priority ?? DEFAULT_PRIORITY;
+  const strategies = options.priority && options.priority.length > 0 ? options.priority : DEFAULT_PRIORITY;
+  const needsAlignment = strategies.includes('alignment');
+  const needsSpacing = strategies.includes('spacing');
   const passesFilter = (target: SnapTarget, axis: 'horizontal' | 'vertical') =>
     options.filter ? options.filter(target, axis) !== false : true;
 
-  let nearestX: AlignmentCandidate | null = null;
-  let nearestY: AlignmentCandidate | null = null;
   type Entry = { rect: NonNullable<ReturnType<typeof toFiniteRect>>; id?: string };
+
+  // Filter results are memoized so a target sees exactly one filter call per axis no
+  // matter how many strategies later consume the outcome.
+  const axisCache = new Map<SnapTarget, { horizontal: boolean; vertical: boolean }>();
+  const enabledAxesFor = (target: SnapTarget) => {
+    let enabled = axisCache.get(target);
+    if (!enabled) {
+      enabled = {
+        horizontal: axes.horizontal && passesFilter(target, 'horizontal'),
+        vertical: axes.vertical && passesFilter(target, 'vertical')
+      };
+      axisCache.set(target, enabled);
+    }
+    return enabled;
+  };
+
+  let alignmentResolution: { x: AlignmentCandidate | null; y: AlignmentCandidate | null } | null = null;
+  const computeAlignment = () => {
+    let nearestX: AlignmentCandidate | null = null;
+    let nearestY: AlignmentCandidate | null = null;
+    for (const target of targets) {
+      const rect = toFiniteRect(target);
+      if (!rect) continue;
+      const enabled = enabledAxesFor(target);
+      if (!enabled.horizontal && !enabled.vertical) continue;
+
+      const targetRight = rect.left + rect.width;
+      const targetBottom = rect.top + rect.height;
+      const targetCenterX = rect.left + rect.width / 2;
+      const targetCenterY = rect.top + rect.height / 2;
+      const targetId = target.id;
+
+      if (enabled.horizontal) {
+        const xCandidates: AlignmentCandidate[] = [
+          {
+            distance: Math.abs(current.left - rect.left),
+            value: rect.left,
+            guide: rect.left,
+            point: 'left',
+            targetId
+          },
+          {
+            distance: Math.abs(right - targetRight),
+            value: targetRight - current.width,
+            guide: targetRight,
+            point: 'right',
+            targetId
+          },
+          {
+            distance: Math.abs(current.left - targetRight),
+            value: targetRight,
+            guide: targetRight,
+            point: 'left',
+            targetId
+          },
+          {
+            distance: Math.abs(right - rect.left),
+            value: rect.left - current.width,
+            guide: rect.left,
+            point: 'right',
+            targetId
+          },
+          {
+            distance: Math.abs(centerX - targetCenterX),
+            value: targetCenterX - current.width / 2,
+            guide: targetCenterX,
+            point: 'center-x',
+            targetId
+          }
+        ];
+        for (const candidate of xCandidates) nearestX = chooseNearest(nearestX, candidate, limit);
+      }
+
+      if (enabled.vertical) {
+        const yCandidates: AlignmentCandidate[] = [
+          {
+            distance: Math.abs(current.top - rect.top),
+            value: rect.top,
+            guide: rect.top,
+            point: 'top',
+            targetId
+          },
+          {
+            distance: Math.abs(bottom - targetBottom),
+            value: targetBottom - current.height,
+            guide: targetBottom,
+            point: 'bottom',
+            targetId
+          },
+          {
+            distance: Math.abs(current.top - targetBottom),
+            value: targetBottom,
+            guide: targetBottom,
+            point: 'top',
+            targetId
+          },
+          {
+            distance: Math.abs(bottom - rect.top),
+            value: rect.top - current.height,
+            guide: rect.top,
+            point: 'bottom',
+            targetId
+          },
+          {
+            distance: Math.abs(centerY - targetCenterY),
+            value: targetCenterY - current.height / 2,
+            guide: targetCenterY,
+            point: 'center-y',
+            targetId
+          }
+        ];
+        for (const candidate of yCandidates) nearestY = chooseNearest(nearestY, candidate, limit);
+      }
+    }
+    return { x: nearestX, y: nearestY };
+  };
+  const alignmentFor = (axis: 'horizontal' | 'vertical'): AlignmentCandidate | null => {
+    if (!needsAlignment) return null;
+    if (!alignmentResolution) alignmentResolution = computeAlignment();
+    return axis === 'horizontal' ? alignmentResolution.x : alignmentResolution.y;
+  };
+
   const horizontalEntries: Entry[] = [];
   const verticalEntries: Entry[] = [];
-
-  for (const target of targets) {
-    const rect = toFiniteRect(target);
-    if (!rect) continue;
-
-    const useHorizontal = axes.horizontal && passesFilter(target, 'horizontal');
-    const useVertical = axes.vertical && passesFilter(target, 'vertical');
-    if (useHorizontal) horizontalEntries.push({ rect, id: target.id });
-    if (useVertical) verticalEntries.push({ rect, id: target.id });
-    if (!useHorizontal && !useVertical) continue;
-
-    const targetRight = rect.left + rect.width;
-    const targetBottom = rect.top + rect.height;
-    const targetCenterX = rect.left + rect.width / 2;
-    const targetCenterY = rect.top + rect.height / 2;
-    const targetId = target.id;
-
-    const xCandidates: AlignmentCandidate[] = [
-      {
-        distance: Math.abs(current.left - rect.left),
-        value: rect.left,
-        guide: rect.left,
-        point: 'left',
-        targetId
-      },
-      {
-        distance: Math.abs(right - targetRight),
-        value: targetRight - current.width,
-        guide: targetRight,
-        point: 'right',
-        targetId
-      },
-      {
-        distance: Math.abs(current.left - targetRight),
-        value: targetRight,
-        guide: targetRight,
-        point: 'left',
-        targetId
-      },
-      {
-        distance: Math.abs(right - rect.left),
-        value: rect.left - current.width,
-        guide: rect.left,
-        point: 'right',
-        targetId
-      },
-      {
-        distance: Math.abs(centerX - targetCenterX),
-        value: targetCenterX - current.width / 2,
-        guide: targetCenterX,
-        point: 'center-x',
-        targetId
-      }
-    ];
-
-    const yCandidates: AlignmentCandidate[] = [
-      {
-        distance: Math.abs(current.top - rect.top),
-        value: rect.top,
-        guide: rect.top,
-        point: 'top',
-        targetId
-      },
-      {
-        distance: Math.abs(bottom - targetBottom),
-        value: targetBottom - current.height,
-        guide: targetBottom,
-        point: 'bottom',
-        targetId
-      },
-      {
-        distance: Math.abs(current.top - targetBottom),
-        value: targetBottom,
-        guide: targetBottom,
-        point: 'top',
-        targetId
-      },
-      {
-        distance: Math.abs(bottom - rect.top),
-        value: rect.top - current.height,
-        guide: rect.top,
-        point: 'bottom',
-        targetId
-      },
-      {
-        distance: Math.abs(centerY - targetCenterY),
-        value: targetCenterY - current.height / 2,
-        guide: targetCenterY,
-        point: 'center-y',
-        targetId
-      }
-    ];
-
-    if (useHorizontal) {
-      for (const candidate of xCandidates) nearestX = chooseNearest(nearestX, candidate, limit);
+  let spacingEntriesComputed = false;
+  const computeSpacingEntries = () => {
+    for (const target of targets) {
+      const rect = toFiniteRect(target);
+      if (!rect) continue;
+      const enabled = enabledAxesFor(target);
+      if (enabled.horizontal) horizontalEntries.push({ rect, id: target.id });
+      if (enabled.vertical) verticalEntries.push({ rect, id: target.id });
     }
-    if (useVertical) {
-      for (const candidate of yCandidates) nearestY = chooseNearest(nearestY, candidate, limit);
-    }
-  }
+    spacingEntriesComputed = true;
+  };
+  const spacingFor = (axis: 'horizontal' | 'vertical'): SpacingCandidate | null => {
+    if (!needsSpacing) return null;
+    if (!spacingEntriesComputed) computeSpacingEntries();
+    return axis === 'horizontal'
+      ? spacingCandidatesForAxis('horizontal', current.left, current.width, limit, horizontalEntries)
+      : spacingCandidatesForAxis('vertical', current.top, current.height, limit, verticalEntries);
+  };
 
   const horizontal = axes.horizontal
-    ? resolveAxis(
-        'horizontal',
-        nearestX,
-        spacingCandidatesForAxis(
-          'horizontal',
-          current.left,
-          current.width,
-          limit,
-          horizontalEntries
-        ),
-        limit,
-        priority
-      )
+    ? resolveAxis('horizontal', limit, strategies, {
+        alignment: () => alignmentFor('horizontal'),
+        spacing: () => spacingFor('horizontal')
+      })
     : null;
   const vertical = axes.vertical
-    ? resolveAxis(
-        'vertical',
-        nearestY,
-        spacingCandidatesForAxis('vertical', current.top, current.height, limit, verticalEntries),
-        limit,
-        priority
-      )
+    ? resolveAxis('vertical', limit, strategies, {
+        alignment: () => alignmentFor('vertical'),
+        spacing: () => spacingFor('vertical')
+      })
     : null;
 
   const xAlignment = horizontal?.candidate ?? null;

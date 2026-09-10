@@ -9,9 +9,23 @@ export interface GroupAreaEdges {
   maxBottom: number;
 }
 
+/**
+ * Visual (axis-aligned) contour of a member in the group coordinate space. For a rotated
+ * member this is the AABB of its true rotated rectangle — MovableBox provides it through
+ * `getVisualRect` (its geometry probe); it is not the member's model rectangle.
+ */
+export interface GroupVisualRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 /** Internal API every MovableBox registers with its surrounding MovableGroup. */
 export interface GroupMemberApi {
   getRect: () => ExtendsMovableBox;
+  /** Visual (rotated AABB) contour of the member, for bounds that see rotation. */
+  getVisualRect: () => GroupVisualRect;
   translateTo: (rect: ExtendsMovableBox) => void;
   getAreaEdges: () => GroupAreaEdges | null;
 }
@@ -19,6 +33,8 @@ export interface GroupMemberApi {
 export interface GroupDragSession {
   leaderId: string;
   startRects: Map<string, ExtendsMovableBox>;
+  /** Visual (rotated AABB) contour of each member at drag start, for rotated bounds. */
+  startVisuals: Map<string, GroupVisualRect>;
 }
 
 export type GroupDragDisposition = 'group' | 'solo' | 'blocked';

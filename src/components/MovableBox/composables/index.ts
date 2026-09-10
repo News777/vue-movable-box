@@ -2,4 +2,9 @@
 export { normalizeKeyboardStep, useKeyboard } from './useKeyboard';
 export { useGrid } from './useGrid';
 export { useSnap } from './useSnap';
-export { useCollision } from './useCollision';
+export {
+  useCollision,
+  directionFromNormal,
+  type CollisionMode,
+  type OrientedCollisionResult
+} from './useCollision';

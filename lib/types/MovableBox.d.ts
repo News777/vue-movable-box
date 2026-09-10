@@ -22,6 +22,13 @@ export interface BoundsMargin {
 }
 export interface SnapTarget extends MovableBoxRect {
     id?: string;
+    /**
+     * Clockwise rotation in degrees of the target's true contour. Defaults to 0.
+     * Precise collision resolves against the rotated shape; legacy AABB mode ignores it.
+     */
+    rotate?: number | string;
+    /** CSS transform-origin of the target rotation, e.g. 'center', 'top left'. Defaults to 'center'. */
+    transformOrigin?: string;
 }
 /** Snap resolution strategies; consulted in configurable priority order. */
 export type SnapStrategy = 'alignment' | 'spacing';
@@ -55,6 +62,14 @@ export interface CollisionEventPayload {
     colliding: boolean;
     direction?: CollisionDirection;
     targetId?: string;
+    /**
+     * Unit contact normal in container pixel space, pointing from the obstacle toward the
+     * moving box. Present in precise collision mode; mapped onto `direction` by its main axis.
+     */
+    normal?: {
+        x: number;
+        y: number;
+    };
 }
 export interface MovableBoxProps<T extends object = object> {
     theme?: string;
@@ -115,6 +130,12 @@ export interface MovableBoxProps<T extends object = object> {
     memberId?: string;
     collisionEnabled?: boolean;
     allowOverlap?: boolean;
+    /**
+     * Collision resolution semantics. 'precise' (default since v3.2.0) resolves against the
+     * true rotated contours of both boxes with continuous collision detection; 'aabb' keeps
+     * the pre-3.2 axis-aligned approximation as a migration escape hatch.
+     */
+    collisionMode?: 'precise' | 'aabb';
     snapTargets?: SnapTarget[];
 }
 export interface MovableBoxExpose<T extends object = object> {

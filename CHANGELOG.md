@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 更新项目计划书，明确 v3.2.0 集中修复旋转碰撞及其它已确认问题，并规划 v3.3.0–v3.5.0 的新增能力、任务状态、依赖关系和验收标准；计划功能尚未实现
 
+## [3.2.0] - 2026-09-10
+
+> 集中修复版本。**破坏性变更：**precise 旋转碰撞成为默认行为（见下），是本计划对既有次版本
+> 兼容承诺的明确例外；`collisionMode="aabb"` 提供旧行为迁移入口。
+
+### Added
+
+- FIX-01 新增 `collisionMode`（`'precise' | 'aabb'`，默认 `precise`）：双方以真实旋转矩形（位置、尺寸、角度、变换原点）参与碰撞，平移使用基于闵可夫斯基和的连续碰撞检测，缩放与旋转全程检测变化路径，被旋转边缘挡住的拖拽沿切线继续滑动
+- FIX-01 `SnapTarget` 新增可选 `rotate` 与 `transformOrigin`，声明碰撞目标的真实变换信息
+- FIX-01 碰撞事件载荷新增可选 `normal`（容器像素坐标系中由障碍物指向当前方框的单位法线），`direction` 按法线主轴映射
+- FIX-05 构建新增真正的 CommonJS 入口 `lib/vue-movable-box.cjs`，`main` 与 `exports['.'].require` 指向它；ESM 与既有 UMD 文件地址保持不变
+- FIX-06 运行时版本改为构建时从 package.json 注入（单一版本来源），并新增命名导出 `version` 与 `install`
+- FIX-08 新增 `pnpm test:package`：从实际 tarball 安装到隔离消费环境，验证 ESM、CJS、浏览器 UMD 全局、组件与插件安装、CSS 子路径、TypeScript 声明及版本一致性，并接入 CI 与 `pnpm release`
+
+### Fixed
+
+- FIX-01 旋转碰撞误报与漏检：AABB 仅用于候选筛选，精确相交按 SAT 判定，边缘接触不算重叠；指针旋转与键盘旋转统一经过边界与碰撞约束（采样整条角度路径，禁止中途扫过障碍物）；初始重叠时只允许逐步脱离
+- FIX-02 组合成员旋转后可能越界：共享边界使用成员视觉包围盒（旋转 AABB）并集，独立边界使用各成员自身视觉矩形（计入旋转偏移），最终组合位移保持成员相对位置
+- FIX-03 吸附辅助线改在随方框逆旋转的呈现层中渲染：`rotate ≠ 0` 时辅助线仍与容器坐标轴对齐并精确落在目标位置，覆盖缩放、滚动与百分比坐标
+- FIX-04 `unitType="%"` 且旋转时，缩放位移先在像素空间完成旋转变换再映射回百分点，不再混用两轴百分点
+- FIX-07 吸附策略惰性求值：未列入 `snapPriority` 的策略不再计算，高优先级策略命中后不再计算低优先级策略，同距离候选仍按目标数组顺序选择，`snapFilter` 每目标每轴仍只调用一次
+- FIX-08 移除 UMD 环境下 `window.Vue.use` 自动安装副作用（Vue 3 全局构建无 `Vue.use`，曾导致 `window.Vue.use is not a function`）；浏览器全局改为 `Vue.createApp(...).use(VueMovableBox)` 显式安装
+
 ## [3.1.0] - 2026-09-10
 
 ### Added

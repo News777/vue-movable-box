@@ -440,4 +440,49 @@ describe('MovableGroup', () => {
     harness.wrapper.unmount();
     expect(harness.group.emitted('move-stop')).toBeUndefined();
   });
+
+  // --- v3.2.0: rotated member bounds use the visual (AABB) contour ---
+
+  it('clamps shared-bounds movement to the union of rotated member visuals', async () => {
+    // Roadmap case: a 100x100 member rotated 45 degrees has a 141.4px visual width, so
+    // the formation must stop before that contour leaves the 600px area.
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 0, top: 0, width: 100, height: 50 }),
+        b: makeRect({ left: 50, top: 100, width: 100, height: 100 })
+      },
+      selected: ['a', 'b'],
+      boxProps: {
+        b: { rotate: 45 }
+      }
+    });
+    await dragBox(harness, 1, [100, 150], [550, 150]);
+
+    const visualRight = Number(harness.models.b.left) + 120.71;
+    expect(visualRight).toBeLessThanOrEqual(600.01);
+    expect(harness.models.b.left).toBeCloseTo(479.29, 0);
+    // Shared bounds keep member relative positions.
+    expect(harness.models.a.left).toBeCloseTo(429.29, 0);
+  });
+
+  it('clamps each rotated member to its own visual contour without shared bounds', async () => {
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 0, top: 0, width: 100, height: 50 }),
+        b: makeRect({ left: 50, top: 100, width: 100, height: 100 })
+      },
+      selected: ['a', 'b'],
+      sharedBounds: false,
+      boxProps: {
+        b: { rotate: 45 }
+      }
+    });
+    await dragBox(harness, 1, [100, 150], [650, 150]);
+
+    // The rotated member stops on its own visual contour; the unrotated leader stops at
+    // the same delta because its own box-level edge (rotated probe width) binds first.
+    expect(Number(harness.models.b.left) + 120.71).toBeLessThanOrEqual(600.01);
+    expect(harness.models.b.left).toBeCloseTo(479.29, 0);
+    expect(harness.models.a.left).toBeCloseTo(429, 0);
+  });
 });

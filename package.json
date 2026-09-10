@@ -1,19 +1,21 @@
 {
   "name": "vue-movable-box",
   "author": "News777",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "license": "MIT",
   "files": [
     "lib"
   ],
-  "main": "./lib/vue-movable-box.umd.js",
+  "main": "./lib/vue-movable-box.cjs",
   "module": "./lib/vue-movable-box.es.js",
   "types": "./lib/index.d.ts",
+  "unpkg": "./lib/vue-movable-box.umd.js",
+  "jsdelivr": "./lib/vue-movable-box.umd.js",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
       "import": "./lib/vue-movable-box.es.js",
-      "require": "./lib/vue-movable-box.umd.js"
+      "require": "./lib/vue-movable-box.cjs"
     },
     "./style.css": "./lib/css/VueMovableBox.css"
   },
@@ -47,8 +49,9 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:all": "pnpm test && pnpm test:e2e",
+    "test:package": "node scripts/verify-package.mjs",
     "test:watch": "vitest",
-    "release": "pnpm test:all && pnpm build && npm publish",
+    "release": "pnpm test:all && pnpm build && pnpm test:package && npm publish",
     "bench": "node scripts/perf-bench.mjs"
   },
   "dependencies": {

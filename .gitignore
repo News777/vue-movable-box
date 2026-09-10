@@ -33,3 +33,6 @@ blob-report
 
 *.tsbuildinfo
 .zcode/
+
+# package consumption check scratch dir
+.package-consume-test/

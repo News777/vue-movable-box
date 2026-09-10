@@ -21,7 +21,8 @@ import {
   type GroupAreaEdges,
   type GroupContext,
   type GroupDragSession,
-  type GroupMemberApi
+  type GroupMemberApi,
+  type GroupVisualRect
 } from './context';
 
 const props = defineProps({
@@ -66,23 +67,23 @@ const translate = (rect: ExtendsMovableBox, deltaLeft: number, deltaTop: number)
   top: asNumber(rect.top) + deltaTop
 });
 
-const unionEdges = (rects: ExtendsMovableBox[]) =>
+const unionEdges = (rects: GroupVisualRect[]) =>
   rects.reduce(
     (union, rect) => ({
-      minLeft: Math.min(union.minLeft, asNumber(rect.left)),
-      minTop: Math.min(union.minTop, asNumber(rect.top)),
-      maxRight: Math.max(union.maxRight, asNumber(rect.left) + asNumber(rect.width)),
-      maxBottom: Math.max(union.maxBottom, asNumber(rect.top) + asNumber(rect.height))
+      minLeft: Math.min(union.minLeft, rect.left),
+      minTop: Math.min(union.minTop, rect.top),
+      maxRight: Math.max(union.maxRight, rect.left + rect.width),
+      maxBottom: Math.max(union.maxBottom, rect.top + rect.height)
     }),
     { minLeft: Infinity, minTop: Infinity, maxRight: -Infinity, maxBottom: -Infinity }
   );
 
 const clampDeltaToEdges = (
-  startRects: Map<string, ExtendsMovableBox>,
+  rects: GroupVisualRect[],
   delta: { left: number; top: number },
   edges: GroupAreaEdges
 ) => {
-  const union = unionEdges([...startRects.values()]);
+  const union = unionEdges(rects);
   return {
     left: Math.min(
       Math.max(delta.left, edges.minLeft - union.minLeft),
@@ -125,7 +126,10 @@ const context: GroupContext = {
       session.value = null;
       return;
     }
-    if (session.value) session.value.startRects.delete(id);
+    if (session.value) {
+      session.value.startRects.delete(id);
+      session.value.startVisuals.delete(id);
+    }
     if (selectedIds.value.includes(id)) {
       setSelection(selectedIds.value.filter(memberId => memberId !== id));
     }
@@ -141,11 +145,15 @@ const context: GroupContext = {
     const nextSelection = selectedIds.value.includes(id) ? [...selectedIds.value] : [id];
     if (!selectedIds.value.includes(id)) setSelection(nextSelection);
     const startRects = new Map<string, ExtendsMovableBox>();
+    const startVisuals = new Map<string, GroupVisualRect>();
     for (const memberId of nextSelection) {
       const api = members.get(memberId);
-      if (api) startRects.set(memberId, cloneRect(api.getRect()));
+      if (api) {
+        startRects.set(memberId, cloneRect(api.getRect()));
+        startVisuals.set(memberId, { ...api.getVisualRect() });
+      }
     }
-    session.value = { leaderId: id, startRects };
+    session.value = { leaderId: id, startRects, startVisuals };
     const rects: GroupMemberRect[] = [];
     for (const [memberId, rect] of startRects) rects.push({ id: memberId, rect: cloneRect(rect) });
     emit('move-start', { leaderId: id, source, rects });
@@ -160,8 +168,10 @@ const context: GroupContext = {
     const edges = members.get(id)?.getAreaEdges();
 
     if (props.sharedBounds) {
+      // Shared bounds clamp the union of the members' visual (rotated AABB) contours so a
+      // rotated member cannot swing outside the area while the formation keeps its shape.
       let delta = { left: deltaLeft, top: deltaTop };
-      if (edges) delta = clampDeltaToEdges(current.startRects, delta, edges);
+      if (edges) delta = clampDeltaToEdges([...current.startVisuals.values()], delta, edges);
       for (const [memberId, startRect] of current.startRects) {
         if (memberId === id) continue;
         members.get(memberId)?.translateTo(translate(startRect, delta.left, delta.top));
@@ -169,25 +179,26 @@ const context: GroupContext = {
       return translate(leaderStart, delta.left, delta.top);
     }
 
-    // Without shared bounds every member clamps against its own start rectangle, so
-    // members stop individually at the area edge while the leader keeps moving.
+    // Without shared bounds every member clamps against its own visual contour, so
+    // members stop individually at the area edge while the leader keeps moving. The
+    // visual rect of a rotated member is offset from its model rect by a constant, so
+    // the clamp bounds translate back onto the model axis with that offset.
     for (const [memberId, startRect] of current.startRects) {
       if (memberId === id) continue;
       const member = members.get(memberId);
       if (!member) continue;
+      const visual = current.startVisuals.get(memberId);
       const target = translate(startRect, deltaLeft, deltaTop);
       const memberEdges = member.getAreaEdges();
-      if (memberEdges) {
-        const maxLeft = Math.max(
-          memberEdges.minLeft,
-          memberEdges.maxRight - asNumber(startRect.width)
-        );
-        const maxTop = Math.max(
-          memberEdges.minTop,
-          memberEdges.maxBottom - asNumber(startRect.height)
-        );
-        target.left = clamp(asNumber(target.left), memberEdges.minLeft, maxLeft);
-        target.top = clamp(asNumber(target.top), memberEdges.minTop, maxTop);
+      if (memberEdges && visual) {
+        const visualOffsetLeft = visual.left - asNumber(startRect.left);
+        const visualOffsetTop = visual.top - asNumber(startRect.top);
+        const minLeft = memberEdges.minLeft - visualOffsetLeft;
+        const maxLeft = Math.max(minLeft, memberEdges.maxRight - visualOffsetLeft - visual.width);
+        const minTop = memberEdges.minTop - visualOffsetTop;
+        const maxTop = Math.max(minTop, memberEdges.maxBottom - visualOffsetTop - visual.height);
+        target.left = clamp(asNumber(target.left), minLeft, maxLeft);
+        target.top = clamp(asNumber(target.top), minTop, maxTop);
       }
       member.translateTo(target);
     }
