@@ -19,6 +19,17 @@ export const normalizeAngle = (value: number | string | undefined | null): numbe
   return wrapped > 180 ? wrapped - 360 : wrapped;
 };
 
+/** Quantizes a constrained angle without stepping past its last safe value. */
+export const quantizeAngleToward = (from: number, value: number, decimalPlaces = 0): number => {
+  if (!Number.isFinite(from) || !Number.isFinite(value)) return normalizeAngle(value);
+  const places = Number.isInteger(decimalPlaces) && decimalPlaces >= 0 ? decimalPlaces : 0;
+  const factor = 10 ** Math.min(places, 15);
+  const scaled = value * factor;
+  const quantized =
+    value >= from ? Math.floor(scaled + Number.EPSILON) : Math.ceil(scaled - Number.EPSILON);
+  return quantized / factor;
+};
+
 export const angleToRadians = (angle: number): number => (angle * Math.PI) / 180;
 
 // Trigonometry leaves ~1e-14 residue at exact quarter turns; round it away.

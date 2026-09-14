@@ -144,19 +144,28 @@ const targets = ref<SnapTarget[]>([
 ]);
 
 const lastCollision = ref<CollisionEventPayload | null>(null);
+const snapshotBoxRect = () => ({
+  left: Number(box.value.left),
+  top: Number(box.value.top),
+  width: Number(box.value.width),
+  height: Number(box.value.height)
+});
 // The last committed rectangle while separated from every obstacle: the "safe position".
-const safeRect = ref<{ left: number; top: number; width: number; height: number } | null>(null);
+const safeRect = ref(snapshotBoxRect());
 const onCollision = (payload: CollisionEventPayload) => {
   lastCollision.value = payload;
-  if (!payload.colliding) {
-    safeRect.value = {
-      left: Number(box.value.left),
-      top: Number(box.value.top),
-      width: Number(box.value.width),
-      height: Number(box.value.height)
-    };
-  }
 };
+
+// Collision state is published before the corresponding model commit. A synchronous
+// model watcher therefore captures the resolved committed rectangle, including contact
+// positions and the first safe movement where no `collision: false` event is emitted.
+watch(
+  box,
+  () => {
+    safeRect.value = snapshotBoxRect();
+  },
+  { deep: true, flush: 'sync' }
+);
 
 // 切换碰撞模式后，上一次 precise 模式的接触法线不再有语义。
 watch(collisionMode, () => {

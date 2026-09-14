@@ -1913,6 +1913,112 @@ describe('MovableBox', () => {
     expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(45);
   });
 
+  it('snaps pointer rotation before emitting the committed angle', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      rotationSnapAngles: [45],
+      rotationSnapThreshold: 10
+    });
+    const box = wrapper.get('.auto-draggable').element as HTMLElement;
+    Object.defineProperty(box, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 80 });
+    box.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, right: 130, bottom: 100, width: 120, height: 80 }) as DOMRect;
+
+    wrapper
+      .get('.rotation-handle')
+      .element.dispatchEvent(pointerEvent('pointerdown', 70, 0, { isPrimary: true }));
+    const radians = (-50 * Math.PI) / 180;
+    document.documentElement.dispatchEvent(
+      pointerEvent('pointermove', 70 + 60 * Math.cos(radians), 60 + 60 * Math.sin(radians))
+    );
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+    await nextTick();
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(45);
+    expect(wrapper.emitted('rotate-stop')?.at(-1)?.slice(1)).toEqual([0, 45]);
+  });
+
+  it('resets to zero with Home without reapplying angle snapping', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      rotate: 30,
+      keyboardEnabled: true,
+      rotationSnapAngles: [45],
+      rotationSnapThreshold: 90
+    });
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'Home' });
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(0);
+  });
+
+  it('keeps snapped rotation inside parent bounds in legacy aabb collision mode', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 200, top: 100, width: 300, height: 100 }),
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90,
+      limitAreaForParent: true,
+      collisionMode: 'aabb',
+      rotationSnapAngles: [90],
+      rotationSnapThreshold: 10
+    });
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(0);
+  });
+
+  it('quantizes a constrained snapped angle toward the last safe value', async () => {
+    const width = 300;
+    const height = 100;
+    const boundaryAngle = 16.6;
+    const radians = (boundaryAngle * Math.PI) / 180;
+    const boundarySpan = width * Math.cos(radians) + height * Math.sin(radians);
+    const centerX = 500 - boundarySpan / 2;
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: centerX - width / 2, top: 150, width, height }),
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 90,
+      limitAreaForParent: true,
+      rotationSnapAngles: [90],
+      rotationSnapThreshold: 10
+    });
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(16);
+  });
+
+  it('quantizes toward the safe side when recovering from an invalid start angle', async () => {
+    const width = 300;
+    const height = 100;
+    const boundaryAngle = 16.6;
+    const radians = (boundaryAngle * Math.PI) / 180;
+    const boundarySpan = width * Math.cos(radians) + height * Math.sin(radians);
+    const centerX = 500 - boundarySpan / 2;
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: centerX - width / 2, top: 150, width, height }),
+      active: true,
+      rotatable: true,
+      rotate: 17,
+      keyboardEnabled: true,
+      keyboardStep: 1,
+      limitAreaForParent: true
+    });
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowLeft' });
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(16);
+  });
+
   it('cannot use rotation snapping to swing through a collision target', async () => {
     const wrapper = mountBox({
       modelValue: makeModel({ left: 0, top: 0, width: 100, height: 100 }),
@@ -1953,6 +2059,19 @@ describe('MovableBox', () => {
     await pointerDrag(wrapper, [0, 0], [60, 0]);
     const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
     expect(update.left).toBe(60);
+  });
+
+  it('ignores invalid targets in precise collision mode instead of moving them to zero', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 20, top: 0, width: 20, height: 20 }),
+      collisionEnabled: true,
+      collisionTargets: [{ id: 'invalid', left: 'invalid', top: 0, width: 20, height: 20 }]
+    });
+
+    await pointerDrag(wrapper, [0, 0], [-20, 0]);
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ left: 0 });
+    expect(wrapper.emitted('collision')).toBeFalsy();
   });
 
   it('uses explicit collisionTargets independently of snap targets', async () => {
@@ -2052,5 +2171,126 @@ describe('MovableBox', () => {
     expect(update.width).toBe(40);
     expect(update.left).toBe(10);
     expect(update.top).toBe(20);
+  });
+
+  it('keeps ratio-locked fixed-anchor output within conflicting maximum sizes', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 10, top: 20, width: 100, height: 50 }),
+      handles: ['br'],
+      resizeDirections: ['br'],
+      resizeMode: 'fixed-anchor',
+      ratioLock: true,
+      minHeight: 80,
+      maxWidth: 100
+    });
+
+    await pointerDrag(wrapper, [110, 70], [210, 70], '.handle-br');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+
+    expect(update).toMatchObject({ left: 10, top: 20, width: 100, height: 50 });
+  });
+
+  it('shrinks at the parent edge instead of moving the fixed anchor', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 400, top: 100, width: 100, height: 50 }),
+      handles: ['mr'],
+      resizeDirections: ['mr'],
+      resizeMode: 'fixed-anchor',
+      limitAreaForParent: true
+    });
+
+    await pointerDrag(wrapper, [500, 125], [600, 125], '.handle-mr');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+
+    expect(update).toMatchObject({ left: 400, top: 100, width: 100, height: 50 });
+  });
+
+  it('keeps a rotated non-center anchor while fitting to the parent boundary', async () => {
+    const start = { left: 300, top: 100, width: 100, height: 50 };
+    const wrapper = mountBox({
+      modelValue: makeModel(start),
+      rotate: 45,
+      transformOrigin: 'left top',
+      handles: ['mr'],
+      resizeDirections: ['mr'],
+      resizeMode: 'fixed-anchor',
+      limitAreaForParent: true
+    });
+    const anchorBefore = localToWorld(start, 45, 'left top', { x: 0, y: 25 });
+
+    await pointerDrag(wrapper, [400, 125], [700, 125], '.handle-mr');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    const result = {
+      left: update.left,
+      top: update.top,
+      width: update.width,
+      height: update.height
+    };
+    const anchorAfter = localToWorld(result, 45, 'left top', {
+      x: 0,
+      y: result.height / 2
+    });
+    const aabb = rotatedAABBAt(
+      result,
+      45,
+      resolveTransformOrigin('left top', result.width, result.height)
+    );
+
+    expect(anchorAfter.x).toBeCloseTo(anchorBefore.x, 0);
+    expect(anchorAfter.y).toBeCloseTo(anchorBefore.y, 0);
+    expect(aabb.left).toBeGreaterThanOrEqual(-0.001);
+    expect(aabb.left + aabb.width).toBeLessThanOrEqual(500.001);
+  });
+
+  it('keeps the fixed anchor when collision shortens a resize path', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 0, top: 0, width: 50, height: 50 }),
+      handles: ['mr'],
+      resizeDirections: ['mr'],
+      resizeMode: 'fixed-anchor',
+      collisionEnabled: true,
+      collisionTargets: [{ id: 'wall', left: 100, top: 0, width: 50, height: 50 }]
+    });
+
+    await pointerDrag(wrapper, [50, 25], [200, 25], '.handle-mr');
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+
+    expect(update.left).toBe(0);
+    expect(update.width).toBe(100);
+  });
+
+  it('resizes a rotated fixed-anchor handle along its local keyboard axis', async () => {
+    const wrapper = mountBox({
+      modelValue: makeModel({ left: 100, top: 100, width: 100, height: 50 }),
+      rotate: 90,
+      active: true,
+      keyboardEnabled: true,
+      keyboardStep: 10,
+      handles: ['mr'],
+      resizeDirections: ['mr'],
+      resizeMode: 'fixed-anchor'
+    });
+    const handle = wrapper.get('.handle-mr');
+    await handle.trigger('focus');
+
+    await handle.trigger('keydown', { key: 'ArrowRight' });
+
+    const update = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as Record<string, number>;
+    const anchorBefore = localToWorld(
+      { left: 100, top: 100, width: 100, height: 50 },
+      90,
+      'center',
+      { x: 0, y: 25 }
+    );
+    const anchorAfter = localToWorld(
+      { left: update.left, top: update.top, width: update.width, height: update.height },
+      90,
+      'center',
+      { x: 0, y: update.height / 2 }
+    );
+
+    expect(update.width).toBe(110);
+    expect(anchorAfter.x).toBeCloseTo(anchorBefore.x, 0);
+    expect(anchorAfter.y).toBeCloseTo(anchorBefore.y, 0);
   });
 });

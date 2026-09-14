@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localToWorld, resizeWithFixedAnchor } from './fixed-anchor';
+import { anchorLocal, localToWorld, resizeWithFixedAnchor } from './fixed-anchor';
 import type { HandlePosition } from '../../../types/MovableBox';
 
 const START = { left: 10, top: 20, width: 100, height: 50 };
@@ -103,6 +103,42 @@ describe('resizeWithFixedAnchor', () => {
     expect(anchorAfter.y).toBeCloseTo(anchor.y, 6);
   });
 
+  it('does not exceed max width when the locked ratio conflicts with min height', () => {
+    const result = resizeWithFixedAnchor({
+      start: START,
+      angle: 0,
+      originSpec: 'center',
+      handle: 'br',
+      pointerDelta: { x: 100, y: 0 },
+      minHeight: 80,
+      maxWidth: 100,
+      ratio: 2
+    });
+
+    expect(result.width).toBe(100);
+    expect(result.height).toBe(50);
+    expect(result.left).toBe(START.left);
+    expect(result.top).toBe(START.top);
+  });
+
+  it('does not exceed max height when the locked ratio conflicts with min width', () => {
+    const result = resizeWithFixedAnchor({
+      start: START,
+      angle: 0,
+      originSpec: 'center',
+      handle: 'br',
+      pointerDelta: { x: 0, y: 100 },
+      minWidth: 160,
+      maxHeight: 50,
+      ratio: 2
+    });
+
+    expect(result.width).toBe(100);
+    expect(result.height).toBe(50);
+    expect(result.left).toBe(START.left);
+    expect(result.top).toBe(START.top);
+  });
+
   it('leaves the non-dragged dimension untouched for middle handles', () => {
     const result = resizeWithFixedAnchor({
       start: START,
@@ -115,5 +151,48 @@ describe('resizeWithFixedAnchor', () => {
     expect(result.width).toBeCloseTo(START.width, 6);
     expect(result.height).toBeCloseTo(START.height + 20, 6);
     expect(result.top).toBeCloseTo(START.top - 20, 6);
+  });
+
+  it.each([
+    ['tl', -1, -1],
+    ['tm', 0, -1],
+    ['tr', 1, -1],
+    ['ml', -1, 0],
+    ['mr', 1, 0],
+    ['bl', -1, 1],
+    ['bm', 0, 1],
+    ['br', 1, 1]
+  ] as const)('keeps the %s anchor stable with a non-center origin', (handle, xSign, ySign) => {
+    const angle = 37;
+    const radians = (angle * Math.PI) / 180;
+    const localChange = { x: xSign * 20, y: ySign * 10 };
+    const pointerDelta = {
+      x: localChange.x * Math.cos(radians) - localChange.y * Math.sin(radians),
+      y: localChange.x * Math.sin(radians) + localChange.y * Math.cos(radians)
+    };
+    const before = localToWorld(
+      START,
+      angle,
+      '25% 75%',
+      anchorLocal(handle, START.width, START.height)
+    );
+    const result = resizeWithFixedAnchor({
+      start: START,
+      angle,
+      originSpec: '25% 75%',
+      handle,
+      pointerDelta
+    });
+    const after = localToWorld(
+      result,
+      angle,
+      '25% 75%',
+      anchorLocal(handle, result.width, result.height)
+    );
+
+    expect(result.width).toBeCloseTo(START.width + Math.abs(xSign) * 20, 6);
+    expect(result.height).toBeCloseTo(START.height + Math.abs(ySign) * 10, 6);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
   });
 });

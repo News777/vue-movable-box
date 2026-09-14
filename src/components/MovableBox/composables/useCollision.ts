@@ -7,6 +7,7 @@ import {
   type CollisionResult
 } from '../utils/collision';
 import {
+  escapeImproves,
   interpolateOriented,
   isPureTranslation,
   orientedOverlap,
@@ -131,7 +132,7 @@ const escapeAllowed = (fromAreas: Map<number, number>, toAreas: Map<number, numb
     const previous = fromAreas.get(index);
     if (previous === undefined || area > previous) return false;
   }
-  return toTotal < fromTotal;
+  return escapeImproves(fromTotal, toTotal);
 };
 
 interface OrientedResolution {
@@ -366,7 +367,7 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
     const previousOverlap = getTotalOverlapArea(previousResults);
     if (previousOverlap > 0) {
       return {
-        accepted: candidateState.totalOverlapArea < previousOverlap,
+        accepted: escapeImproves(previousOverlap, candidateState.totalOverlapArea),
         rect: candidate,
         progress: 1,
         ...candidateState

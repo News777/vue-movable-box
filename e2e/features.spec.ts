@@ -108,3 +108,18 @@ test.describe('v3.4 group collision fixtures', () => {
     expect(followerLeft - leaderLeft).toBeCloseTo(160, 3);
   });
 });
+
+test.describe('v3.5 diagnostic fixture', () => {
+  test('shows and advances the last safe committed position', async ({ page }) => {
+    await page.goto('/examples/diagnose.html');
+    await page.getByLabel('安全位置（提交矩形）').check();
+
+    const safe = page.locator('.overlay-safe');
+    await expect(safe).toBeVisible();
+    await expect(safe).toHaveCSS('left', '60px');
+
+    await dragBox(page, -20, 0);
+
+    await expect(safe).toHaveCSS('left', '40px');
+  });
+});

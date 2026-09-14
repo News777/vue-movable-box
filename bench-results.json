@@ -7,25 +7,7 @@
   "results": [
     {
       "label": "plain(100)",
-      "mountMs": 46,
-      "frames": 40,
-      "p50": 16.7,
-      "p95": 16.8,
-      "max": 16.9,
-      "longFrameRatio": 0
-    },
-    {
-      "label": "snap+collision(100)",
-      "mountMs": 33,
-      "frames": 40,
-      "p50": 16.7,
-      "p95": 16.7,
-      "max": 16.7,
-      "longFrameRatio": 0
-    },
-    {
-      "label": "writeback(100)",
-      "mountMs": 28,
+      "mountMs": 57,
       "frames": 40,
       "p50": 16.7,
       "p95": 16.8,
@@ -33,10 +15,28 @@
       "longFrameRatio": 0
     },
     {
-      "label": "group-collision-all(100)",
+      "label": "snap+collision(100)",
+      "mountMs": 48,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "writeback(100)",
       "mountMs": 28,
       "frames": 40,
       "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "group-collision-all(100)",
+      "mountMs": 37,
+      "frames": 40,
+      "p50": 16.6,
       "p95": 16.8,
       "max": 16.8,
       "longFrameRatio": 0
@@ -45,32 +45,32 @@
       "label": "plain(500)",
       "mountMs": 115,
       "frames": 40,
-      "p50": 16.7,
+      "p50": 16.6,
       "p95": 16.8,
       "max": 16.8,
       "longFrameRatio": 0
     },
     {
       "label": "snap+collision(500)",
-      "mountMs": 158,
+      "mountMs": 175,
       "frames": 40,
       "p50": 16.7,
-      "p95": 16.8,
+      "p95": 16.7,
       "max": 16.8,
       "longFrameRatio": 0
     },
     {
       "label": "writeback(500)",
-      "mountMs": 107,
-      "frames": 62,
+      "mountMs": 105,
+      "frames": 60,
       "p50": 16.7,
       "p95": 33.4,
-      "max": 49.9,
-      "longFrameRatio": 1.6
+      "max": 33.5,
+      "longFrameRatio": 0
     },
     {
       "label": "group-collision-all(500)",
-      "mountMs": 159,
+      "mountMs": 180,
       "frames": 62,
       "p50": 16.7,
       "p95": 33.4,
@@ -79,7 +79,16 @@
     },
     {
       "label": "plain(1000)",
-      "mountMs": 205,
+      "mountMs": 212,
+      "frames": 40,
+      "p50": 16.7,
+      "p95": 16.7,
+      "max": 16.8,
+      "longFrameRatio": 0
+    },
+    {
+      "label": "snap+collision(1000)",
+      "mountMs": 419,
       "frames": 40,
       "p50": 16.7,
       "p95": 16.8,
@@ -87,31 +96,22 @@
       "longFrameRatio": 0
     },
     {
-      "label": "snap+collision(1000)",
-      "mountMs": 367,
-      "frames": 40,
-      "p50": 16.6,
-      "p95": 16.8,
-      "max": 16.9,
-      "longFrameRatio": 0
-    },
-    {
       "label": "writeback(1000)",
-      "mountMs": 198,
-      "frames": 68,
+      "mountMs": 226,
+      "frames": 66,
       "p50": 16.7,
-      "p95": 66.7,
-      "max": 83.8,
-      "longFrameRatio": 29.4
+      "p95": 83.3,
+      "max": 83.4,
+      "longFrameRatio": 30.3
     },
     {
       "label": "group-collision-all(1000)",
-      "mountMs": 395,
-      "frames": 65,
+      "mountMs": 387,
+      "frames": 62,
       "p50": 16.7,
       "p95": 83.4,
-      "max": 99.9,
-      "longFrameRatio": 30.8
+      "max": 100,
+      "longFrameRatio": 32.3
     }
   ]
 }

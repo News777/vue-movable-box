@@ -3,7 +3,8 @@
  * Verifies the actual publishable tarball in an isolated consumer environment:
  * - `npm pack` of this repo, extracted (not linked) into a consumer node_modules;
  * - ESM import (node entry), CommonJS require (real `.cjs` entry), browser-style UMD load;
- * - component and plugin shapes, CSS subpath, TypeScript declarations;
+ * - a real component render (SSR mount) in the ESM and CJS consumers, plugin install,
+ *   CSS subpath, TypeScript declarations;
  * - runtime default-export version === package.json version (single source of truth).
  *
  * The consumer directory lives inside the repository so peer dependencies (vue) and the
@@ -136,7 +137,7 @@ try {
   if (esm.status !== 0) {
     fail(`ESM consumption failed: ${esm.stderr || esm.stdout}`);
   } else {
-    pass(`ESM import exposes component, plugin install, and version ${packageJson.version}`);
+    pass(`ESM consumer renders MovableBox, installs plugin, v${packageJson.version}`);
   }
 
   // --- 4. CommonJS consumption -----------------------------------------------------
@@ -146,7 +147,7 @@ try {
   if (cjs.status !== 0) {
     fail(`CommonJS consumption failed: ${cjs.stderr || cjs.stdout}`);
   } else {
-    pass(`require() exposes named exports and version ${packageJson.version}`);
+    pass(`CJS consumer renders MovableBox via require(), v${packageJson.version}`);
   }
 
   // --- 5. Browser global consumption (UMD) -----------------------------------------
@@ -220,7 +221,8 @@ function satisfiesCaretRange(version, range) {
 function writeEsmProbe(file) {
   const source = `
 import VueMovableBox, { MovableBox, MovableGroup, name } from '${packageJson.name}';
-import { createApp } from 'vue';
+import { createSSRApp, h } from 'vue';
+import { renderToString } from 'vue/server-renderer';
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -233,8 +235,14 @@ assert(MovableGroup && (typeof MovableGroup.setup === 'function' || typeof Movab
 assert(typeof VueMovableBox.install === 'function', 'default export is not a Vue plugin');
 assert(VueMovableBox.version === '${packageJson.version}',
   \`default export version \${VueMovableBox.version} !== ${packageJson.version}\`);
-const app = createApp({ render: () => null });
+const app = createSSRApp({
+  render: () => h(MovableBox, {
+    modelValue: { left: 10, top: 10, width: 100, height: 80 }
+  })
+});
 app.use(VueMovableBox);
+const html = await renderToString(app);
+assert(/class="[^"]*\\bauto-draggable\\b[^"]*"/.test(html), 'mounted MovableBox did not render its root element');
 console.log('esm-ok');
 `;
   writeFileSync(file, source);
@@ -247,6 +255,8 @@ const assert = (condition, message) => {
 };
 const lib = require('${packageJson.name}');
 const { MovableBox, MovableGroup, name } = lib;
+const { createSSRApp, h } = require('vue');
+const { renderToString } = require('vue/server-renderer');
 assert(name === 'VueMovableBox', 'named export name mismatch');
 assert(MovableBox && (typeof MovableBox.setup === 'function' || typeof MovableBox.render === 'function'),
   'MovableBox is not consumable through require()');
@@ -255,7 +265,20 @@ assert(MovableGroup && (typeof MovableGroup.setup === 'function' || typeof Movab
 assert(lib.default && typeof lib.default.install === 'function', 'default export is not a Vue plugin');
 assert(lib.default.version === '${packageJson.version}',
   \`default export version \${lib.default.version} !== ${packageJson.version}\`);
-console.log('cjs-ok');
+(async () => {
+  const app = createSSRApp({
+    render: () => h(MovableBox, {
+      modelValue: { left: 10, top: 10, width: 100, height: 80 }
+    })
+  });
+  app.use(lib.default);
+  const html = await renderToString(app);
+  assert(/class="[^"]*\\bauto-draggable\\b[^"]*"/.test(html), 'mounted MovableBox did not render its root element');
+  console.log('cjs-ok');
+})().catch(error => {
+  console.error(error);
+  process.exit(1);
+});
 `;
   writeFileSync(file, source);
 }

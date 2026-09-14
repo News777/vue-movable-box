@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   convexHull,
+  escapeImproves,
   interpolateOriented,
   isPureTranslation,
+  lastSafeProgress,
   orientedAABB,
   orientedCorners,
   orientedOverlap,
@@ -252,5 +254,36 @@ describe('convex hull', () => {
     ]);
     expect(hull).toHaveLength(5);
     expect(hull).toContainEqual({ x: 5, y: -2 });
+  });
+});
+
+describe('gradual escape rule', () => {
+  it('requires strictly shrinking overlap from an overlapping start', () => {
+    expect(escapeImproves(10, 5)).toBe(true);
+    expect(escapeImproves(10, 10)).toBe(false);
+    expect(escapeImproves(10, 12)).toBe(false);
+  });
+
+  it('requires full separation from a separated start', () => {
+    expect(escapeImproves(0, 0)).toBe(true);
+    expect(escapeImproves(0, 3)).toBe(false);
+  });
+});
+
+describe('last safe progress walk', () => {
+  it('returns 1 when no sampled progress violates', () => {
+    expect(lastSafeProgress(() => false, 16)).toBe(1);
+  });
+
+  it('bisects toward the first violating boundary', () => {
+    // Violation starts exactly at progress 0.5: the walk must stop just before it.
+    const progress = lastSafeProgress(step => step >= 0.5, 16);
+    expect(progress).toBeLessThan(0.5);
+    expect(progress).toBeGreaterThanOrEqual(0.5 - 1 / 16);
+  });
+
+  it('clamps the step count to at least one sample', () => {
+    expect(lastSafeProgress(() => false, 0)).toBe(1);
+    expect(lastSafeProgress(() => true, 0)).toBe(0);
   });
 });

@@ -368,12 +368,6 @@ export const translateRect = (rect: OrientedRect, delta: Vec2): OrientedRect => 
   top: rect.top + delta.y
 });
 
-export const translateOriented = (rect: OrientedRect, delta: Vec2): OrientedRect => ({
-  ...rect,
-  left: rect.left + delta.x,
-  top: rect.top + delta.y
-});
-
 export const interpolateOriented = (
   from: OrientedRect,
   to: OrientedRect,
@@ -398,33 +392,32 @@ export const isPureTranslation = (from: OrientedRect, to: OrientedRect): boolean
   from.origin.y === to.origin.y;
 
 /**
- * Largest known-safe progress along the interpolation path from `from` to `to`. Progress 0
- * must be safe; callers handle an already-overlapping start before calling.
+ * Gradual-escape rule for an initially overlapping state, expressed on overlap-area
+ * totals: motion is only allowed while the overlap strictly shrinks. Inputs are
+ * non-negative overlap areas; `fromOverlap === 0` means the previous state was fully
+ * separated, in which case only a fully separated result is accepted. The per-target
+ * refinement of this rule (no deepening penetration, no entering a new target) lives in
+ * `escapeAllowed` in `useCollision`.
  */
-export const resolvePathProgress = (
-  from: OrientedRect,
-  to: OrientedRect,
-  targets: OrientedRect[],
-  options: { steps?: number; refinements?: number } = {}
+export const escapeImproves = (fromOverlap: number, toOverlap: number): boolean =>
+  fromOverlap > 0 ? toOverlap < fromOverlap : toOverlap === 0;
+
+/**
+ * Uniform sampling plus bisection refinement over progress [0, 1] against a violation
+ * predicate; returns the largest known-safe progress. Progress 0 must be safe; `steps`
+ * is clamped to at least 1.
+ */
+export const lastSafeProgress = (
+  violates: (progress: number) => boolean,
+  steps: number,
+  refinements = 20
 ): number => {
-  const steps = Math.max(1, options.steps ?? 16);
-  const refinements = options.refinements ?? 20;
-  if (isPureTranslation(from, to)) {
-    const sweep = sweepTranslation(from, { x: to.left - from.left, y: to.top - from.top }, targets);
-    if (!sweep) return 1;
-    return Math.max(0, sweep.interval.entry - EPSILON);
-  }
-  const violates = (progress: number) => {
-    const sample = interpolateOriented(from, to, progress);
-    return targets.some(target => orientedOverlap(sample, target).overlapping);
-  };
-  // Never shortcut on a safe endpoint: a size or angle change can sweep through an
-  // obstacle mid-path and come out clear on the other side.
+  const count = Math.max(1, Math.floor(steps));
   let safe = 0;
   let upper = 1;
   let blocked = false;
-  for (let index = 1; index <= steps; index += 1) {
-    const progress = index / steps;
+  for (let index = 1; index <= count; index += 1) {
+    const progress = index / count;
     if (violates(progress)) {
       upper = progress;
       blocked = true;
@@ -439,4 +432,27 @@ export const resolvePathProgress = (
     else safe = middle;
   }
   return safe;
+};
+
+/**
+ * Largest known-safe progress along the interpolation path from `from` to `to`. Progress 0
+ * must be safe; callers handle an already-overlapping start before calling.
+ */
+export const resolvePathProgress = (
+  from: OrientedRect,
+  to: OrientedRect,
+  targets: OrientedRect[]
+): number => {
+  if (isPureTranslation(from, to)) {
+    const sweep = sweepTranslation(from, { x: to.left - from.left, y: to.top - from.top }, targets);
+    if (!sweep) return 1;
+    return Math.max(0, sweep.interval.entry - EPSILON);
+  }
+  const violates = (progress: number) => {
+    const sample = interpolateOriented(from, to, progress);
+    return targets.some(target => orientedOverlap(sample, target).overlapping);
+  };
+  // Never shortcut on a safe endpoint: a size or angle change can sweep through an
+  // obstacle mid-path and come out clear on the other side.
+  return lastSafeProgress(violates, 16);
 };

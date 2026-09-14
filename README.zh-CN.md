@@ -67,12 +67,31 @@ const boxConfig = ref({
 ## 在线演示
 
 ```bash
-# 克隆项目后
-pnpm install
+# 克隆项目后（Node.js 18+，pnpm 9）
+corepack enable && corepack prepare pnpm@9 --activate   # 或：npm install -g pnpm@9
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
 访问 http://localhost:5173 查看交互式演示。
+
+### 本地运行测试套件
+
+```bash
+pnpm test            # 单元测试（Vitest + jsdom）
+pnpm type-check      # 类型检查（vue-tsc）
+pnpm build           # 类型检查并构建产物到 lib/
+pnpm test:package    # tarball 消费检查（需先 pnpm build）
+pnpm test:e2e        # 浏览器 e2e 测试（Playwright）
+```
+
+浏览器 e2e 测试需要先安装一次 Playwright 浏览器：
+
+```bash
+pnpm exec playwright install chromium firefox webkit
+```
+
+Linux 环境请追加 `--with-deps`（与 CI 一致），以便同时安装所需系统依赖。
 
 ## API
 
@@ -124,7 +143,7 @@ pnpm dev
 | `snapTargets`        | `SnapTarget[]`                                               | `[]`                              | 其他元素的矩形数据；组合内请使用 `id: memberId` 以排除成员目标          |
 | `snapFilter`         | `(target, axis) => boolean`                                  | `undefined`                       | 返回 false 可在对应轴（`horizontal` / `vertical`）上排除该吸附目标    |
 | `snapPriority`       | `('alignment' \| 'spacing')[]`                               | `['alignment','spacing']`         | 每个轴的策略咨询顺序；阈值内首个产出候选的策略生效                    |
-| `collisionEnabled`   | `boolean`                                                    | `false`                           | 对 `snapTargets` 启用碰撞检测                                         |
+| `collisionEnabled`   | `boolean`                                                    | `false`                           | 对 `collisionTargets` 启用碰撞检测；未传时沿用 `snapTargets`           |
 | `collisionMode`      | `'precise' \| 'aabb'`                                        | `'precise'`                       | `'precise'` 按双方真实旋转矩形做连续碰撞检测；`'aabb'` 保留 3.2 之前的近似行为 |
 | `allowOverlap`       | `boolean`                                                    | `false`                           | 检测到碰撞时是否仍允许重叠                                            |
 | **方向控制**         |                                                              |                                   |                                                                       |

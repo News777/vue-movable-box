@@ -111,6 +111,7 @@ import {
   deltaToLocal,
   normalizeAngle,
   normalizeTransformOrigin,
+  quantizeAngleToward,
   resolveTransformOrigin,
   rotatedAABBAt,
   snapRotationAngle
@@ -137,13 +138,15 @@ import type {
 } from '../../types/MovableBox';
 import type { SnapAxes, SnapResult } from './utils/snap';
 import {
+  escapeImproves,
+  lastSafeProgress,
   orientedAABB,
   orientedOverlap,
   sweepTranslation,
-  translateOriented,
+  translateRect,
   type OrientedRect
 } from './utils/oriented';
-import { findFirstCollisionPathInterval } from './utils/collision';
+import { findFirstCollisionPathInterval, isValidCollisionTarget } from './utils/collision';
 import { addEvent, deepClone, keepDecimalsToNum, removeEvent, setValUnit, valIsNaN } from './utils';
 
 const props = defineProps({
@@ -642,7 +645,8 @@ const computeOrientedTarget = (target: SnapTarget): OrientedRect => {
 
 const orientedSnapTarget = (target: SnapTarget): OrientedRect => computeOrientedTarget(target);
 
-const orientedSnapTargets = (): OrientedRect[] => collisionObstacles().map(orientedSnapTarget);
+const orientedSnapTargets = (): OrientedRect[] =>
+  collisionObstacles().filter(isValidCollisionTarget).map(orientedSnapTarget);
 
 /** Snap targets described by their visual (rotated AABB) contour, back in model units. */
 const visualSnapTargets = () => {
@@ -684,8 +688,7 @@ const roundedSafeRect = (
     return total;
   };
   const previousArea = overlapTotal(previous);
-  const verify = (rect: ExtendsMovableBox) =>
-    previousArea > 0 ? overlapTotal(rect) < previousArea : overlapTotal(rect) === 0;
+  const verify = (rect: ExtendsMovableBox) => escapeImproves(previousArea, overlapTotal(rect));
   if (verify(resolved)) return resolved;
   // Retreat the position only: shrinking width/height here could drop the rectangle
   // below its configured minimum sizes, which position retreat avoids.
@@ -756,16 +759,6 @@ const rotationOutOfBoundsAt = (angle: number): boolean => {
   );
 };
 
-const rotationOverlapAreaAt = (angle: number, targets: OrientedRect[]): number => {
-  if (!rotationCollides()) return 0;
-  const oriented = selfOriented(internalRect.value, angle);
-  let total = 0;
-  for (const target of targets) {
-    total += orientedOverlap(oriented, target).overlapArea;
-  }
-  return total;
-};
-
 // Targets are resolved once per rotation so sampling (48 steps + bisection) does not
 // rebuild the oriented geometry for every sample.
 const rotationViolatesAt = (angle: number, targets: OrientedRect[]): boolean => {
@@ -783,33 +776,20 @@ const rotationStepCount = (from: number, to: number): number =>
 // largest safe angle. Start and end being safe does not imply the path is: a corner can
 // sweep through an obstacle mid-rotation and come out clear on the other side.
 const lastSafeRotationAngle = (from: number, to: number, targets: OrientedRect[]): number => {
-  let safe = from;
-  let upper = to;
-  let blocked = false;
-  const steps = rotationStepCount(from, to);
-  for (let index = 1; index <= steps; index += 1) {
-    const angle = from + ((to - from) * index) / steps;
-    if (rotationViolatesAt(angle, targets)) {
-      upper = angle;
-      blocked = true;
-      break;
-    }
-    safe = angle;
-  }
-  if (!blocked) return to;
-  let lower = safe;
-  for (let index = 0; index < 20; index += 1) {
-    const middle = (lower + upper) / 2;
-    if (rotationViolatesAt(middle, targets)) upper = middle;
-    else lower = middle;
-  }
-  return lower;
+  const progress = lastSafeProgress(
+    step => rotationViolatesAt(from + (to - from) * step, targets),
+    rotationStepCount(from, to)
+  );
+  // An unblocked path returns the requested angle verbatim so the commit stays bit-exact.
+  return progress === 1 ? to : from + (to - from) * progress;
 };
 
 const constrainRotation = (from: number, to: number): number => {
-  if (!isPreciseCollision.value) return normalizeAngle(to);
   if (Math.abs(to - from) < 1e-9) return normalizeAngle(to);
-  const targets = orientedSnapTargets();
+  const constrainsBounds = props.limitAreaForParent && Boolean(state.parentElement);
+  const targets = rotationCollides() ? orientedSnapTargets() : [];
+  if (!constrainsBounds && targets.length === 0) return normalizeAngle(to);
+  const decimalPlaces = props.isKeepDecimals ? props.decimalPlaces : 0;
   if (rotationViolatesAt(from, targets)) {
     // Already violating (out of bounds or overlapping): scan toward the requested angle
     // for the first fully safe angle so the interaction can recover instead of locking.
@@ -817,12 +797,14 @@ const constrainRotation = (from: number, to: number): number => {
     for (let index = 1; index <= steps; index += 1) {
       const angle = from + ((to - from) * index) / steps;
       if (!rotationViolatesAt(angle, targets)) {
-        return normalizeAngle(roundValue(angle));
+        const recovered = normalizeAngle(quantizeAngleToward(to, angle, decimalPlaces));
+        if (!rotationViolatesAt(recovered, targets)) return recovered;
       }
     }
     return normalizeAngle(from);
   }
-  return normalizeAngle(roundValue(lastSafeRotationAngle(from, to, targets)));
+  const lastSafe = lastSafeRotationAngle(from, to, targets);
+  return normalizeAngle(quantizeAngleToward(from, lastSafe, decimalPlaces));
 };
 
 // Shrinks an over-large rotated rectangle so its AABB fits the area; clamping alone
@@ -1137,8 +1119,7 @@ const memberApi: GroupMemberApi = {
       };
       const fromOverlap = overlapAt(fromOriented);
       if (fromOverlap > 0) {
-        const toOverlap = overlapAt(translateOriented(fromOriented, deltaPx));
-        return toOverlap < fromOverlap ? 1 : 0;
+        return escapeImproves(fromOverlap, overlapAt(translateRect(fromOriented, deltaPx))) ? 1 : 0;
       }
       const sweep = sweepTranslation(fromOriented, deltaPx, targets);
       if (!sweep) return 1;
@@ -1538,14 +1519,83 @@ const applyFixedAnchorPlacement = (
   };
   if (!props.limitAreaForParent || !state.parentElement) return restored;
   const edges = getAreaEdges();
-  const probe = geometryProbe(restored);
-  const epsilon = 1e-7;
-  const fits =
-    probe.left >= edges.minLeft - epsilon &&
-    probe.left + probe.width <= edges.maxRight + epsilon &&
-    probe.top >= edges.minTop - epsilon &&
-    probe.top + probe.height <= edges.maxBottom + epsilon;
-  return fits ? restored : candidate;
+  const fitsBounds = (rect: ExtendsMovableBox) => {
+    const probe = geometryProbe(rect);
+    const epsilon = 1e-7;
+    return (
+      probe.left >= edges.minLeft - epsilon &&
+      probe.left + probe.width <= edges.maxRight + epsilon &&
+      probe.top >= edges.minTop - epsilon &&
+      probe.top + probe.height <= edges.maxBottom + epsilon
+    );
+  };
+  if (fitsBounds(restored)) return restored;
+
+  // A positional clamp can keep the requested size by moving the whole rectangle,
+  // which breaks the defining fixed-anchor invariant. When a smaller anchored size can
+  // fit, walk back along the same resize ray before falling back to bounds priority.
+  const width = asNumber(candidate.width);
+  const height = asNumber(candidate.height);
+  const minWidth = Math.max(0, valIsNaN(props.minWidth, 0));
+  const minHeight = Math.max(0, valIsNaN(props.minHeight, 0));
+  const effectiveMinWidth = Math.min(width, minWidth);
+  const effectiveMinHeight = Math.min(height, minHeight);
+  const handleEdges = HANDLE_EDGES[handle];
+  const affectsWidth = handleEdges.left || handleEdges.right;
+  const affectsHeight = handleEdges.top || handleEdges.bottom;
+  const uniform = props.ratioLock || (affectsWidth && affectsHeight);
+  const floorFactor = uniform
+    ? Math.min(
+        1,
+        Math.max(
+          width > 0 ? effectiveMinWidth / width : 0,
+          height > 0 ? effectiveMinHeight / height : 0
+        )
+      )
+    : 0;
+  const floorWidth = uniform ? width * floorFactor : affectsWidth ? effectiveMinWidth : width;
+  const floorHeight = uniform ? height * floorFactor : affectsHeight ? effectiveMinHeight : height;
+  const anchoredRectAt = (progress: number): ExtendsMovableBox => {
+    const quantize = props.isKeepDecimals ? roundValue : Math.floor;
+    const nextWidth = Math.max(
+      effectiveMinWidth,
+      quantize(floorWidth + (width - floorWidth) * progress)
+    );
+    const nextHeight = Math.max(
+      effectiveMinHeight,
+      quantize(floorHeight + (height - floorHeight) * progress)
+    );
+    const positioned = placeAnchorAt(
+      {
+        left: 0,
+        top: 0,
+        width: nextWidth * scale.x,
+        height: nextHeight * scale.y
+      },
+      angle,
+      props.transformOrigin,
+      handle,
+      anchorWorld
+    );
+    return {
+      ...candidate,
+      left: roundValue(positioned.left / scale.x),
+      top: roundValue(positioned.top / scale.y),
+      width: nextWidth,
+      height: nextHeight
+    };
+  };
+
+  const floorRect = anchoredRectAt(0);
+  if (!fitsBounds(floorRect)) return candidate;
+  let fittingProgress = 0;
+  let overflowingProgress = 1;
+  for (let index = 0; index < 40; index += 1) {
+    const middle = (fittingProgress + overflowingProgress) / 2;
+    if (fitsBounds(anchoredRectAt(middle))) fittingProgress = middle;
+    else overflowingProgress = middle;
+  }
+  return anchoredRectAt(fittingProgress);
 };
 
 const resizeFromHandle = (
@@ -2085,11 +2135,22 @@ const resizeWithKeyboard = (handle: HandlePosition, direction: DragDirection, di
   if (props.canResize?.(cloneRect(previous), handle) === false) return;
   const deltaX = direction === 'left' ? -distance : direction === 'right' ? distance : 0;
   const deltaY = direction === 'top' ? -distance : direction === 'bottom' ? distance : 0;
-  // Rotate the step in pixel space, then map back onto model units (see pointer resize).
-  let candidate = resolveResizeCandidate(previous, handle, {
-    x: toPixelX(deltaX),
-    y: toPixelY(deltaY)
-  });
+  const keyboardPx = { x: toPixelX(deltaX), y: toPixelY(deltaY) };
+  // A focused handle exposes its own local resize axis (for example, ArrowRight on
+  // `mr`) even after the box rotates. Convert that local step to screen space before
+  // the shared resolver maps it back. Shift+Arrow on the box itself remains a
+  // screen-space command, preserving the existing keyboard contract.
+  const rawPx = (() => {
+    if (focusedHandle.value !== handle || rotationAngle.value === 0) return keyboardPx;
+    const radians = angleToRadians(rotationAngle.value);
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return {
+      x: keyboardPx.x * cos - keyboardPx.y * sin,
+      y: keyboardPx.x * sin + keyboardPx.y * cos
+    };
+  })();
+  let candidate = resolveResizeCandidate(previous, handle, rawPx);
   if (rotationAngle.value || props.resizeMode === 'fixed-anchor') {
     candidate = fitRotatedSizeToArea(candidate, handle);
     candidate = clampPosition(candidate);
@@ -2221,7 +2282,12 @@ const handleRotationKeyDown = (event: KeyboardEvent) => {
   const oldValue = internalRotation.value;
   const step = normalizeKeyboardStep(props.keyboardStep) * (event.shiftKey ? 10 : 1);
   const raw = event.key === 'Home' ? 0 : oldValue + (event.key === 'ArrowLeft' ? -step : step);
-  const next = snapRotationAngle(raw, props.rotationSnapAngles ?? [], props.rotationSnapThreshold);
+  // Home is an explicit reset command; angle snapping must not redirect it to a
+  // configured candidate away from zero. Bounds and collision constraints still apply.
+  const next =
+    event.key === 'Home'
+      ? raw
+      : snapRotationAngle(raw, props.rotationSnapAngles ?? [], props.rotationSnapThreshold);
   emit('rotate-start', event, oldValue);
   const value = commitRotation(constrainRotation(oldValue, next));
   emit('rotate-stop', event, oldValue, value);

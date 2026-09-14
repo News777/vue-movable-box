@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   checkAllCollisions,
   checkCollision,
+  findFirstCollisionPathInterval,
   getDominantCollision,
-  getTotalOverlapArea
+  getTotalOverlapArea,
+  isValidCollisionTarget
 } from './collision';
 
 describe('collision utilities', () => {
@@ -39,5 +41,23 @@ describe('collision utilities', () => {
       'self'
     );
     expect(results).toEqual([]);
+  });
+
+  it('ignores zero-area targets during continuous path checks', () => {
+    const from = { left: 0, top: 0, width: 10, height: 10 };
+    const to = { ...from, left: 100 };
+
+    expect(
+      findFirstCollisionPathInterval(from, to, [
+        { id: 'zero-width', left: 50, top: 0, width: 0, height: 20 },
+        { id: 'zero-height', left: 50, top: 0, width: 20, height: 0 }
+      ])
+    ).toBeNull();
+  });
+
+  it('validates finite positive-area public targets', () => {
+    expect(isValidCollisionTarget({ left: 1, top: 2, width: 3, height: 4 })).toBe(true);
+    expect(isValidCollisionTarget({ left: 'invalid', top: 2, width: 3, height: 4 })).toBe(false);
+    expect(isValidCollisionTarget({ left: 1, top: 2, width: 0, height: 4 })).toBe(false);
   });
 });

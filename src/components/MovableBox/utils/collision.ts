@@ -32,9 +32,15 @@ const toNumericRect = (rect: SnapTarget): NumericRect | null => {
   const width = toFiniteNumber(rect.width);
   const height = toFiniteNumber(rect.height);
   if (left === null || top === null || width === null || height === null) return null;
-  if (width < 0 || height < 0) return null;
+  // Empty rectangles have no collision area. Ignoring them here keeps the path sweep
+  // consistent with both `checkCollision` and the precise oriented collision pipeline.
+  if (width <= 0 || height <= 0) return null;
   return { left, top, width, height };
 };
+
+/** Whether a public collision target describes a finite rectangle with positive area. */
+export const isValidCollisionTarget = (target: SnapTarget): boolean =>
+  toNumericRect(target) !== null;
 
 const applyLessThan = (
   interval: CollisionPathInterval,

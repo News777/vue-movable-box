@@ -177,33 +177,19 @@ export const resizeWithFixedAnchor = (input: FixedAnchorResizeInput): PlaneRect 
     ? Math.max(0, input.maxHeight ?? Infinity)
     : Infinity;
 
-  if (input.ratio && input.ratio > 0) {
-    // The axis with the larger relative pointer travel drives the locked ratio; the
-    // other axis follows, then limits are respected by repairing the driven axis.
+  if (input.ratio && Number.isFinite(input.ratio) && input.ratio > 0) {
+    // Express every size limit on the width axis before clamping. Repairing one axis
+    // after clamping the other can violate its maximum when the configured minima and
+    // maxima have no common ratio-locked size. As in local-delta mode, maxima win for
+    // an impossible constraint set so the emitted rectangle never exceeds an upper cap.
     const ratio = input.ratio;
     const widthDriven =
       signs.x !== 0 && (signs.y === 0 || Math.abs(localDelta.x) >= Math.abs(localDelta.y) * ratio);
-    if (widthDriven) {
-      width = clampRange(width, Math.min(minWidth, maxWidth), maxWidth);
-      height = width / ratio;
-      if (height < minHeight) {
-        height = minHeight;
-        width = height * ratio;
-      } else if (height > maxHeight) {
-        height = maxHeight;
-        width = height * ratio;
-      }
-    } else {
-      height = clampRange(height, Math.min(minHeight, maxHeight), maxHeight);
-      width = height * ratio;
-      if (width < minWidth) {
-        width = minWidth;
-        height = width / ratio;
-      } else if (width > maxWidth) {
-        width = maxWidth;
-        height = width / ratio;
-      }
-    }
+    const desiredWidth = widthDriven ? width : height * ratio;
+    const lockedMinWidth = Math.max(minWidth, minHeight * ratio);
+    const lockedMaxWidth = Math.min(maxWidth, maxHeight * ratio);
+    width = clampRange(desiredWidth, Math.min(lockedMinWidth, lockedMaxWidth), lockedMaxWidth);
+    height = width / ratio;
   } else {
     width = clampRange(width, Math.min(minWidth, maxWidth), maxWidth);
     height = clampRange(height, Math.min(minHeight, maxHeight), maxHeight);

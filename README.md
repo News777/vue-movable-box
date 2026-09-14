@@ -67,12 +67,31 @@ const boxConfig = ref({
 ## Online Demo
 
 ```bash
-# After cloning the project
-pnpm install
+# After cloning the project (Node.js 18+, pnpm 9)
+corepack enable && corepack prepare pnpm@9 --activate   # or: npm install -g pnpm@9
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
 Visit http://localhost:5173 for the interactive demo.
+
+### Running the test suites locally
+
+```bash
+pnpm test            # unit tests (Vitest + jsdom)
+pnpm type-check      # type check (vue-tsc)
+pnpm build           # type check + library build into lib/
+pnpm test:package    # tarball consumption check (run after pnpm build)
+pnpm test:e2e        # browser e2e tests (Playwright)
+```
+
+The browser e2e suite needs the Playwright browsers installed once:
+
+```bash
+pnpm exec playwright install chromium firefox webkit
+```
+
+On Linux, append `--with-deps` (as CI does) so the required system libraries are installed too.
 
 ## API
 
@@ -124,7 +143,7 @@ Visit http://localhost:5173 for the interactive demo.
 | `snapTargets`         | `SnapTarget[]`                                               | `[]`                              | Rectangles of other elements; inside a group, use `id: memberId` so member targets are excluded               |
 | `snapFilter`          | `(target, axis) => boolean`                                  | `undefined`                       | Return false to exclude a target from snapping on `horizontal` / `vertical`                                  |
 | `snapPriority`        | `('alignment' \| 'spacing')[]`                               | `['alignment','spacing']`         | Strategy consultation order per axis; the first strategy with a candidate inside the threshold wins          |
-| `collisionEnabled`    | `boolean`                                                    | `false`                           | Detect collisions against `snapTargets`                                                                      |
+| `collisionEnabled`    | `boolean`                                                    | `false`                           | Detect collisions against `collisionTargets`, falling back to `snapTargets` when omitted                     |
 | `collisionMode`       | `'precise' \| 'aabb'`                                        | `'precise'`                       | `'precise'` resolves against true rotated contours with continuous collision detection; `'aabb'` keeps the pre-3.2 behavior |
 | `allowOverlap`        | `boolean`                                                    | `false`                           | Allow a colliding candidate to be committed                                                                  |
 | **Direction Control** |                                                              |                                   |                                                                                                              |

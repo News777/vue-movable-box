@@ -3,6 +3,7 @@ import {
   deltaToLocal,
   normalizeAngle,
   normalizeTransformOrigin,
+  quantizeAngleToward,
   resolveTransformOrigin,
   rotatedAABB,
   rotatedAABBAt,
@@ -127,5 +128,19 @@ describe('snapRotationAngle', () => {
 
   it('returns the angle untouched for an empty candidate list', () => {
     expect(snapRotationAngle(33, [], 10)).toBe(33);
+  });
+
+  it('ignores invalid candidates and disables snapping for a negative threshold', () => {
+    expect(snapRotationAngle(12, [Number.NaN, Infinity, 15], 5)).toBe(15);
+    expect(snapRotationAngle(12, [15], -1)).toBe(12);
+  });
+});
+
+describe('quantizeAngleToward', () => {
+  it('quantizes toward the start side of the last safe angle', () => {
+    expect(quantizeAngleToward(0, 16.6)).toBe(16);
+    expect(quantizeAngleToward(30, 16.4)).toBe(17);
+    expect(quantizeAngleToward(0, 16.678, 2)).toBe(16.67);
+    expect(quantizeAngleToward(30, 16.678, 2)).toBe(16.68);
   });
 });

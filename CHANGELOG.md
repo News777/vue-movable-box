@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 `rotationSnapAngles` 的四类约束问题：`Home` 归零不再被角度吸附重定向；`collisionMode="aabb"` 不再绕过父级旋转边界；受约束角度按安全侧量化，避免四舍五入后重新越界或碰撞；越界起点可量化到安全侧完成恢复
+- 修复 `fixed-anchor` 缩放的三类约束问题：比例锁定与交叉 min/max 冲突时不再突破最大尺寸；靠近父级边界时优先收缩可行尺寸而非平移固定锚点；旋转后的聚焦手柄按本地轴响应键盘方向键
+- 统一 AABB 与 precise 两条碰撞管线的目标校验：忽略非有限坐标和零面积目标，避免连续路径检测被不可见目标阻断，或 precise 模式把无效坐标错误回退到原点
+- 修复碰撞诊断页首次启用“安全位置”时没有叠加层、后续安全矩形可能落后一帧的问题，并增加三浏览器回归
+
 ### Documentation
 
-- 更新项目计划书，明确 v3.2.0 集中修复旋转碰撞及其它已确认问题，并规划 v3.3.0–v3.5.0 的新增能力、任务状态、依赖关系和验收标准；计划功能尚未实现
+- 修正 `collisionEnabled` 的 API 描述：优先检测 `collisionTargets`，未传时回退到 `snapTargets`
 
 ## [3.5.0] - 2026-09-10
 
