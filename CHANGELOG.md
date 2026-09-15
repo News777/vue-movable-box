@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-09-15
+
+### Added
+
+- FEAT-35-01 新增碰撞诊断示例（`examples/diagnose.html`）：可切换真实旋转轮廓、AABB 包围盒、接触法线与安全位置叠加层，并支持一键导出当前场景 JSON 用于回归复现
+- FEAT-35-02 新增完整接入示例（`examples/integration.html`）：覆盖普通受控布局、旋转碰撞、组合整体移动（groupCollision='all'）与受控数据回写，并标注坐标系与目标数据要求
+- FEAT-35-03 e2e 浏览器矩阵扩展到 Chromium、Firefox 与 WebKit；依赖 CDP 输入模拟的用例保留在 Chromium 并显式标记跳过原因；新增 e2e fixture（`examples/e2e-fixture.html`）覆盖精确碰撞、角度吸附、固定锚点缩放与组合整体碰撞的浏览器级回归
+- FEAT-35-04 兼容性收敛：`test:package` 新增"已安装 vue 满足声明 peer 范围"检查；双语 README 新增从 v3.1.x 的迁移说明（precise 碰撞默认值、包入口、浏览器全局安装、版本导出）
+- FEAT-35-05 发布自动化：CI e2e 安装并运行三浏览器矩阵；build 作业接入快速性能基线（`BENCH_SCENARIOS=100,1000`）并上传 `bench-results.json` 工件；release 作业在发布前执行版本校验与 tarball 消费检查
+
 ### Changed
 
 - `MovableGroup` 会话因 leader 卸载或强制中止（`disabled`/`initRect`）而解散时，现在会触发 `source: null` 的 `move-cancel`（成员不还原），保证每个 `move-start` 都有终止事件；`memberId` 运行时变化改为原地迁移注册，进行中的会话角色与选中状态跟随同一实例（原先 `memberId` 变化不会迁移注册，会话与选中仍按旧 id 寻址）
@@ -41,16 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GroupMoveCancelPayload.source` 的注释修正为 leader 卸载（仅 leader 卸载解散会话并发 `source: null` 的 `move-cancel`，跟随者卸载只移出会话与选中集合）
 - 明确两个既有语义：组会话进行中对成员设置 `disabled`/`initRect` 不会把它移出编队，leader 每帧 `translateTo` 仍会带动该成员（编队刚性优先，仅 leader 的强制中止会解散会话）；组合位移经碰撞夹取后不做 `isKeepDecimals` 像素取整，保证精确落在接触位置而不取整进障碍
 - 明确逃逸拒绝帧的组语义：起手重叠成员的逃逸在端点或最终落位违反逐目标规则时，该帧共享位移归零、编队回到本次会话起点配置（而非保持上一帧位置）——多帧手势中表现为编队跳回起点，属于"只允许逐步脱离"规则的安全侧取舍
-
-## [3.5.0] - 2026-09-10
-
-### Added
-
-- FEAT-35-01 新增碰撞诊断示例（`examples/diagnose.html`）：可切换真实旋转轮廓、AABB 包围盒、接触法线与安全位置叠加层，并支持一键导出当前场景 JSON 用于回归复现
-- FEAT-35-02 新增完整接入示例（`examples/integration.html`）：覆盖普通受控布局、旋转碰撞、组合整体移动（groupCollision='all'）与受控数据回写，并标注坐标系与目标数据要求
-- FEAT-35-03 e2e 浏览器矩阵扩展到 Chromium、Firefox 与 WebKit；依赖 CDP 输入模拟的用例保留在 Chromium 并显式标记跳过原因；新增 e2e fixture（`examples/e2e-fixture.html`）覆盖精确碰撞、角度吸附、固定锚点缩放与组合整体碰撞的浏览器级回归
-- FEAT-35-04 兼容性收敛：`test:package` 新增"已安装 vue 满足声明 peer 范围"检查；双语 README 新增从 v3.1.x 的迁移说明（precise 碰撞默认值、包入口、浏览器全局安装、版本导出）
-- FEAT-35-05 发布自动化：CI e2e 安装并运行三浏览器矩阵；build 作业接入快速性能基线（`BENCH_SCENARIOS=100,1000`）并上传 `bench-results.json` 工件；release 作业在发布前执行版本校验与 tarball 消费检查
 
 ## [3.4.0] - 2026-09-10
 
