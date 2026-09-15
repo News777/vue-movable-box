@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `MovableGroup` 会话因 leader 卸载或强制中止（`disabled`/`initRect`）而解散时，现在会触发 `source: null` 的 `move-cancel`（成员不还原），保证每个 `move-start` 都有终止事件；`memberId` 运行时变化改为原地迁移注册，进行中的会话角色与选中状态跟随同一实例（原先 `memberId` 变化不会迁移注册，会话与选中仍按旧 id 寻址）
+- 明确旋转精度契约：指针、键盘与角度吸附产生的旋转输出遵循 `isKeepDecimals`/`decimalPlaces`；父组件传入的 `rotate` 保持权威且不会被子组件按精度配置纠正回写，规则从下一次交互开始应用
 
 ### Fixed
 

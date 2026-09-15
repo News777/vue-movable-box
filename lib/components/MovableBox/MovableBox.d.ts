@@ -231,7 +231,7 @@ declare const _default: __VLS_WithTemplateSlots<import('vue').DefineComponent<im
     setSize: (width: number, height: number) => void;
     reset: () => void;
     activate: () => void;
-    deactivate: () => void; /** CSS transform-origin for the rotation, e.g. 'center', 'top left', '50% 50%'. */
+    deactivate: () => void;
     cancelInteraction: (source?: Event | null | undefined) => void;
 }, {}, {}, {}, import('vue').ComponentOptionsMixin, import('vue').ComponentOptionsMixin, {
     "update:modelValue": (value: ExtendsMovableBox) => void;

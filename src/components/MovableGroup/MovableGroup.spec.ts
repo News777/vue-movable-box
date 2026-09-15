@@ -312,6 +312,29 @@ describe('MovableGroup', () => {
     expect(harness.models.b).toMatchObject({ left: 170 });
   });
 
+  it('refreshes follower bounds when the container resizes between group drags', async () => {
+    const harness = mountGroup({
+      rects: {
+        a: makeRect({ left: 150, top: 0 }),
+        b: makeRect({ left: 0, top: 0 })
+      },
+      selected: ['a', 'b'],
+      sharedBounds: false
+    });
+
+    // Prime both members' cached area snapshots at the original 600px width.
+    await dragBox(harness, 1, [50, 25], [50, 25]);
+    const areaElement = harness.wrapper.get('.area').element as HTMLElement;
+    Object.defineProperty(areaElement, 'clientWidth', { configurable: true, value: 300 });
+
+    await dragBox(harness, 1, [50, 25], [250, 25]);
+
+    // The leader stops at left 200 and the follower must independently stop at the same
+    // current edge, rather than using the previous 600px area and moving to left 350.
+    expect(harness.models.b).toMatchObject({ left: 200, top: 0 });
+    expect(harness.models.a).toMatchObject({ left: 200, top: 0 });
+  });
+
   it('ignores a second concurrent leader instead of hijacking the active session', async () => {
     const harness = mountGroup();
     // Start dragging b (opens the group session)...

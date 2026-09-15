@@ -1478,6 +1478,39 @@ describe('MovableBox', () => {
     expect(wrapper.emitted('drag-start')).toBeFalsy();
   });
 
+  it('quantizes pointer rotation to the configured decimal places', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      rotate: 0,
+      isKeepDecimals: true,
+      decimalPlaces: 2
+    });
+    const box = wrapper.get('.auto-draggable').element as HTMLElement;
+    Object.defineProperty(box, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 80 });
+    box.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, right: 130, bottom: 100, width: 120, height: 80 }) as DOMRect;
+
+    wrapper
+      .get('.rotation-handle')
+      .element.dispatchEvent(pointerEvent('pointerdown', 70, 0, { isPrimary: true }));
+    const pointerAngle = (-88.7655 * Math.PI) / 180;
+    document.documentElement.dispatchEvent(
+      pointerEvent(
+        'pointermove',
+        70 + 60 * Math.cos(pointerAngle),
+        60 + 60 * Math.sin(pointerAngle)
+      )
+    );
+    await flushFrame();
+    document.documentElement.dispatchEvent(pointerEvent('pointerup', 0, 0));
+    await nextTick();
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(1.23);
+    expect(wrapper.emitted('rotate-stop')?.at(-1)?.slice(1)).toEqual([0, 1.23]);
+  });
+
   it('normalizes handle rotation across the 180 degree boundary', async () => {
     const wrapper = mountBox({ active: true, rotatable: true, rotate: 170 });
     const box = wrapper.get('.auto-draggable').element as HTMLElement;
@@ -1538,6 +1571,53 @@ describe('MovableBox', () => {
     await handle.trigger('keydown', { key: 'Home' });
     expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(0);
   });
+
+  it('keeps external rotation authoritative until the next interaction', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      rotate: 12.345,
+      isKeepDecimals: false
+    });
+
+    const transform = wrapper.get('.auto-draggable').attributes('style') ?? '';
+    const renderedAngle = Number(transform.match(/rotate\(([-\d.]+)deg\)/)?.[1]);
+    expect(renderedAngle).toBeCloseTo(12.345, 10);
+    expect(wrapper.emitted('update:rotate')).toBeFalsy();
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(13);
+    expect(wrapper.emitted('rotate')?.at(-1)?.[0]).toBe(13);
+    const stopPayload = wrapper.emitted('rotate-stop')?.at(-1)?.slice(1) as number[];
+    expect(stopPayload[0]).toBeCloseTo(12.345, 10);
+    expect(stopPayload[1]).toBe(13);
+  });
+
+  it.each([
+    { isKeepDecimals: false, decimalPlaces: 3, expected: 1 },
+    { isKeepDecimals: true, decimalPlaces: 2, expected: 1.23 },
+    { isKeepDecimals: true, decimalPlaces: 3, expected: 1.235 }
+  ])(
+    'quantizes keyboard rotation with isKeepDecimals=$isKeepDecimals and decimalPlaces=$decimalPlaces',
+    async ({ isKeepDecimals, decimalPlaces, expected }) => {
+      const wrapper = mountBox({
+        active: true,
+        rotatable: true,
+        keyboardEnabled: true,
+        keyboardStep: 1.2345,
+        isKeepDecimals,
+        decimalPlaces
+      });
+
+      await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+
+      expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(expected);
+      expect(wrapper.emitted('rotate')?.at(-1)?.[0]).toBe(expected);
+      expect(wrapper.emitted('rotate-stop')?.at(-1)?.slice(1)).toEqual([0, expected]);
+    }
+  );
 
   it('does not advertise rotation keyboard shortcuts while keyboard control is disabled', () => {
     const wrapper = mountBox({ active: true, rotatable: true });
@@ -1911,6 +1991,24 @@ describe('MovableBox', () => {
     await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight', shiftKey: true });
     // Shift steps 50 degrees from 0, which is within 10 of 45 and snaps there.
     expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(45);
+  });
+
+  it('quantizes a snapped rotation angle to the configured decimal places', async () => {
+    const wrapper = mountBox({
+      active: true,
+      rotatable: true,
+      keyboardEnabled: true,
+      keyboardStep: 10,
+      rotationSnapAngles: [12.3456],
+      rotationSnapThreshold: 5,
+      isKeepDecimals: true,
+      decimalPlaces: 2
+    });
+
+    await wrapper.get('.rotation-handle').trigger('keydown', { key: 'ArrowRight' });
+
+    expect(wrapper.emitted('update:rotate')?.at(-1)?.[0]).toBe(12.35);
+    expect(wrapper.emitted('rotate-stop')?.at(-1)?.slice(1)).toEqual([0, 12.35]);
   });
 
   it('snaps pointer rotation before emitting the committed angle', async () => {

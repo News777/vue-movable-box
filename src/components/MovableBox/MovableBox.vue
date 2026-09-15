@@ -489,7 +489,12 @@ const commitRect = (next: ExtendsMovableBox) => {
 };
 
 const commitRotation = (next: number) => {
-  const value = normalizeAngle(roundValue(normalizeAngle(next)));
+  // Quantize interaction output only. The rotate prop watcher intentionally keeps the
+  // parent-provided value authoritative instead of emitting a corrective update loop.
+  const rounded = roundValue(normalizeAngle(next));
+  // normalizeAngle uses modulo arithmetic, which can reintroduce binary floating-point
+  // tails after Decimal.js rounded the value. Only repair the excluded -180 boundary.
+  const value = rounded === -180 ? 180 : rounded;
   internalRotation.value = value;
   emit('update:rotate', value);
   emit('rotate', value);
@@ -1113,11 +1118,11 @@ const quantizeProgress = (progress: number) => Math.max(0, Math.floor(progress *
 
 const memberApi: GroupMemberApi = {
   getRect: () => cloneRect(internalRect.value),
-  // Percent-unit geometry needs the container snapshot; resolve it lazily like
-  // getAreaEdges so a member that never interacted still reports a true visual contour
-  // (a zero snapshot would treat percent values as pixels and skew the rotated AABB).
+  // Group sessions sample every participating member once at drag start. Refresh here so
+  // both percent geometry and each member's later per-frame bounds use the current
+  // container size even when layout changed without a window resize event.
   getVisualRect: () => {
-    if (!state.parentElement) refreshArea();
+    refreshArea();
     return geometryProbe(cloneRect(internalRect.value));
   },
   translateTo: rect => {
@@ -1209,9 +1214,8 @@ onMounted(() => {
     groupContext.registerMember(memberIdentity, memberApi);
   }
   // Window resizes refresh the area snapshot and the target-geometry cache. A container
-  // that changes size on its own is picked up when this box next starts an interaction
-  // (refreshArea runs before any geometry is probed); a group follower that never
-  // interacts keeps its snapshot until a window resize or its own next gesture.
+  // that changes size on its own is picked up when this box next starts an interaction;
+  // group members also refresh when the group samples their visual rectangles.
   if (typeof window !== 'undefined') {
     window.addEventListener('resize', refreshArea);
   }

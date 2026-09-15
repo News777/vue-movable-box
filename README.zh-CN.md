@@ -104,8 +104,8 @@ Linux 环境请追加 `--with-deps`（与 CI 一致），以便同时安装所�
 | `inActiveColor`      | `string`                                                     | `#666666`                         | 失活状态边框颜色                                                      |
 | `unitType`           | `'px' \| '%'`                                                | `'px'`                            | 尺寸单位类型                                                          |
 | `scale`              | `number \| string`                                           | `1`                               | 组件整体缩放比例                                                      |
-| `isKeepDecimals`     | `boolean`                                                    | `false`                           | 是否保留小数                                                          |
-| `decimalPlaces`      | `number`                                                     | `2`                               | 保留小数位数                                                          |
+| `isKeepDecimals`     | `boolean`                                                    | `false`                           | 交互产生的位置、尺寸和旋转角度是否保留小数                            |
+| `decimalPlaces`      | `number`                                                     | `2`                               | 开启 `isKeepDecimals` 时交互输出保留的小数位数                         |
 | `draggable`          | `boolean`                                                    | `true`                            | 是否可拖拽                                                            |
 | `dragHandle`         | `string`                                                     | -                                 | 拖拽触发区域的 CSS 选择器；设置后仅方框内命中该选择器的元素可发起拖拽 |
 | `dragCancel`         | `string`                                                     | -                                 | 拖拽排除区域的 CSS 选择器；命中元素（如表单、按钮）不会触发拖拽       |
@@ -414,7 +414,9 @@ boxRef.value.cancelInteraction();
 
 设置 `rotatable` 后，激活方框会显示旋转手柄，拖动手柄会更新 `v-model:rotate`。同时开启
 `keyboardEnabled` 时，聚焦旋转手柄后可用左右方向键按 `keyboardStep` 调节角度，按住 Shift
-以 10 倍步长调节，按 Home 归零。
+以 10 倍步长调节，按 Home 归零。指针和键盘产生的旋转角度遵循
+`isKeepDecimals`/`decimalPlaces`，吸附角度也会按相同规则量化后再触发事件。父组件传入的
+`rotate` 仍是权威值且只做角度归一化；精度设置在下一次交互时生效，不会触发纠正性回写。
 
 旋转几何语义（在 3.0.0 中定义）：
 

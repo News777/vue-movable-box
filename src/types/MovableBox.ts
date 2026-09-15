@@ -87,7 +87,9 @@ export interface MovableBoxProps<T extends object = object> {
   inActiveColor?: string;
   unitType?: 'px' | '%';
   scale?: number | string;
+  /** Whether interaction-produced position, size, and rotation values keep decimals. */
   isKeepDecimals?: boolean;
+  /** Decimal places retained for interaction-produced values when isKeepDecimals is true. */
   decimalPlaces?: number;
   draggable?: boolean;
   /** CSS selector restricting where a drag can start. When set, only matching elements inside the box start drags. */

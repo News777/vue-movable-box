@@ -104,8 +104,8 @@ On Linux, append `--with-deps` (as CI does) so the required system libraries are
 | `inActiveColor`       | `string`                                                     | `#666666`                         | Inactive border color                                                                                        |
 | `unitType`            | `'px' \| '%'`                                                | `'px'`                            | Size unit type                                                                                               |
 | `scale`               | `number \| string`                                           | `1`                               | Component scale ratio                                                                                        |
-| `isKeepDecimals`      | `boolean`                                                    | `false`                           | Keep decimal places                                                                                          |
-| `decimalPlaces`       | `number`                                                     | `2`                               | Decimal places to keep                                                                                       |
+| `isKeepDecimals`      | `boolean`                                                    | `false`                           | Keep decimals in interaction-produced position, size, and rotation values                                   |
+| `decimalPlaces`       | `number`                                                     | `2`                               | Decimal places retained for interaction-produced values when `isKeepDecimals` is enabled                    |
 | `draggable`           | `boolean`                                                    | `true`                            | Enable dragging                                                                                              |
 | `dragHandle`          | `string`                                                     | -                                 | CSS selector restricting where a drag can start; when set, only matching elements inside the box start drags |
 | `dragCancel`          | `string`                                                     | -                                 | CSS selector for elements (e.g. forms, buttons) that must not start a drag                                   |
@@ -436,7 +436,10 @@ keep their documented meaning.
 
 Set `rotatable` to show the rotation handle. Dragging it updates `v-model:rotate`; with
 `keyboardEnabled`, focus the handle and use Left/Right to rotate by `keyboardStep`, Shift for a
-10x step, or Home to reset to 0°.
+10x step, or Home to reset to 0°. Pointer and keyboard rotation outputs follow
+`isKeepDecimals`/`decimalPlaces`; configured snap angles are quantized the same way before they are
+emitted. Parent-provided `rotate` values remain authoritative and are only normalized, so precision
+settings take effect on the next interaction instead of causing a corrective prop update.
 
 Rotated geometry semantics (defined in 3.0.0):
 
