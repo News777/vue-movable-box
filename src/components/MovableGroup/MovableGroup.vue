@@ -128,11 +128,11 @@ const limitDeltaByMembers = (
 ): { left: number; top: number } => {
   if (props.groupCollision !== 'all') return delta;
   let progress = 1;
-  for (const memberId of current.startRects.keys()) {
+  for (const [memberId, startRect] of current.startRects) {
     if (memberId === leaderId) continue;
     const member = members.get(memberId);
     if (!member) continue;
-    const memberProgress = member.sharedDeltaProgress(current.startRects.get(memberId)!, delta);
+    const memberProgress = member.sharedDeltaProgress(startRect, delta);
     if (memberProgress < progress) progress = memberProgress;
   }
   return { left: delta.left * progress, top: delta.top * progress };
@@ -147,18 +147,52 @@ const setSelection = (ids: string[]) => {
 
 const context: GroupContext = {
   registerMember: (id, api) => {
+    // A duplicate id from a different instance must not hijack the existing member:
+    // sessions and selection would silently start addressing the wrong box.
+    if (members.has(id) && members.get(id) !== api) return false;
     members.set(id, api);
+    return true;
+  },
+  renameMember: (oldId, newId, api) => {
+    if (members.get(oldId) !== api) return false;
+    if (oldId === newId) return true;
+    if (members.has(newId) && members.get(newId) !== api) return false;
+    members.delete(oldId);
+    members.set(newId, api);
+    // The session and the selection address members by id, so both follow the same
+    // component instance to its new identity instead of dissolving or dropping it.
+    const current = session.value;
+    if (current) {
+      if (current.leaderId === oldId) current.leaderId = newId;
+      if (current.startRects.has(oldId)) {
+        current.startRects.set(newId, current.startRects.get(oldId)!);
+        current.startRects.delete(oldId);
+      }
+      if (current.startVisuals.has(oldId)) {
+        current.startVisuals.set(newId, current.startVisuals.get(oldId)!);
+        current.startVisuals.delete(oldId);
+      }
+    }
+    if (selectedIds.value.includes(oldId)) {
+      setSelection(selectedIds.value.map(id => (id === oldId ? newId : id)));
+    }
+    return true;
   },
   unregisterMember: id => {
+    // Capture the records before the leader's api leaves the map, so its rectangle is
+    // part of the dissolve payload like any other cancel.
+    const current = session.value;
+    const records = current && current.leaderId === id ? memberRecords(current.startRects) : null;
     members.delete(id);
-    if (session.value?.leaderId === id) {
+    if (records) {
       session.value = null;
-      return;
-    }
-    if (session.value) {
+      emit('move-cancel', { leaderId: id, source: null, rects: records });
+    } else if (session.value) {
       session.value.startRects.delete(id);
       session.value.startVisuals.delete(id);
     }
+    // Selection must drop the member on every unmount path; the previous early return
+    // for a leader unmount left a dead id behind that later selections carried forward.
     if (selectedIds.value.includes(id)) {
       setSelection(selectedIds.value.filter(memberId => memberId !== id));
     }
@@ -177,10 +211,11 @@ const context: GroupContext = {
     const startVisuals = new Map<string, GroupVisualRect>();
     for (const memberId of nextSelection) {
       const api = members.get(memberId);
-      if (api) {
-        startRects.set(memberId, cloneRect(api.getRect()));
-        startVisuals.set(memberId, { ...api.getVisualRect() });
-      }
+      // A member running its own resize/rotate keeps that gesture; joining it into the
+      // formation would let the leader's per-frame translateTo overwrite the change.
+      if (!api || api.isInteracting()) continue;
+      startRects.set(memberId, cloneRect(api.getRect()));
+      startVisuals.set(memberId, { ...api.getVisualRect() });
     }
     session.value = { leaderId: id, startRects, startVisuals };
     const rects: GroupMemberRect[] = [];
@@ -188,13 +223,22 @@ const context: GroupContext = {
     emit('move-start', { leaderId: id, source, rects });
     return 'group';
   },
+  // A non-drag gesture on a formation member would be overwritten by the leader's
+  // per-frame translateTo, so members of an active session (leader included) are blocked.
+  beginMemberInteraction: id => {
+    const current = session.value;
+    if (!current) return true;
+    return current.leaderId !== id && !current.startRects.has(id);
+  },
   constrainPosition: (id, candidate) => {
     const current = session.value;
     const leaderStart = current?.startRects.get(id);
-    if (!current || current.leaderId !== id || !leaderStart || !members.has(id)) return candidate;
+    if (!current || current.leaderId !== id || !leaderStart) return candidate;
+    const leader = members.get(id);
+    if (!leader) return candidate;
     const deltaLeft = asNumber(candidate.left) - asNumber(leaderStart.left);
     const deltaTop = asNumber(candidate.top) - asNumber(leaderStart.top);
-    const edges = members.get(id)?.getAreaEdges();
+    const edges = leader.getAreaEdges();
 
     if (props.sharedBounds) {
       // Shared bounds clamp the union of the members' visual (rotated AABB) contours so a
@@ -202,6 +246,21 @@ const context: GroupContext = {
       let delta = { left: deltaLeft, top: deltaTop };
       if (edges) delta = clampDeltaToEdges([...current.startVisuals.values()], delta, edges);
       delta = limitDeltaByMembers(current, id, delta);
+      // The leader's pipeline validated only this frame's segment (previous → candidate).
+      // Once the formation alters the delta, the start-based leader position leaves that
+      // segment — after a pointer direction change it can land inside an obstacle the
+      // leader had already steered around — so sweep the leader from its start as well.
+      // An unaltered delta keeps the leader's own (slide-aware) resolution untouched.
+      if (delta.left !== deltaLeft || delta.top !== deltaTop) {
+        const leaderProgress = leader.sharedDeltaProgress(leaderStart, delta);
+        delta = { left: delta.left * leaderProgress, top: delta.top * leaderProgress };
+        // The min across members (and the leader re-sweep above) can land a
+        // start-overlapped follower on an interior path point its own validation never
+        // saw — escape overlap is not monotone along the path. Re-ask every member
+        // with the final delta: validating the shrunk endpoint is exactly validating
+        // the landing point, so a deeper landing collapses the delta to zero.
+        delta = limitDeltaByMembers(current, id, delta);
+      }
       for (const [memberId, startRect] of current.startRects) {
         if (memberId === id) continue;
         members.get(memberId)?.translateTo(translate(startRect, delta.left, delta.top));
@@ -212,29 +271,38 @@ const context: GroupContext = {
     // Without shared bounds every member clamps against its own visual contour, so
     // members stop individually at the area edge while the leader keeps moving. The
     // visual rect of a rotated member is offset from its model rect by a constant, so
-    // the clamp bounds translate back onto the model axis with that offset.
+    // the clamp bounds translate back onto the model axis with that offset. The bounds
+    // clamp runs before the collision sweep (the same order as the shared-bounds path):
+    // clamping a swept position afterwards would slide it off the validated segment,
+    // possibly into an obstacle. The trade-off: a member that already starts outside its
+    // bounds (area shrank under it) is pulled back only by the swept fraction of the
+    // clamped delta instead of being pinned to the edge — a degenerate configuration
+    // whose fix belongs to the bounds resolution, not to this per-frame sweep.
     for (const [memberId, startRect] of current.startRects) {
       if (memberId === id) continue;
       const member = members.get(memberId);
       if (!member) continue;
       const visual = current.startVisuals.get(memberId);
-      const progress =
-        props.groupCollision === 'all'
-          ? member.sharedDeltaProgress(startRect, { left: deltaLeft, top: deltaTop })
-          : 1;
-      const target = translate(startRect, deltaLeft * progress, deltaTop * progress);
+      const memberDelta = { left: deltaLeft, top: deltaTop };
       const memberEdges = member.getAreaEdges();
       if (memberEdges && visual) {
-        const visualOffsetLeft = visual.left - asNumber(startRect.left);
-        const visualOffsetTop = visual.top - asNumber(startRect.top);
+        const startLeft = asNumber(startRect.left);
+        const startTop = asNumber(startRect.top);
+        const visualOffsetLeft = visual.left - startLeft;
+        const visualOffsetTop = visual.top - startTop;
         const minLeft = memberEdges.minLeft - visualOffsetLeft;
         const maxLeft = Math.max(minLeft, memberEdges.maxRight - visualOffsetLeft - visual.width);
         const minTop = memberEdges.minTop - visualOffsetTop;
         const maxTop = Math.max(minTop, memberEdges.maxBottom - visualOffsetTop - visual.height);
-        target.left = clamp(asNumber(target.left), minLeft, maxLeft);
-        target.top = clamp(asNumber(target.top), minTop, maxTop);
+        // Clamp the delta itself so an unclamped axis keeps the exact shared value.
+        memberDelta.left = clamp(deltaLeft, minLeft - startLeft, maxLeft - startLeft);
+        memberDelta.top = clamp(deltaTop, minTop - startTop, maxTop - startTop);
       }
-      member.translateTo(target);
+      const progress =
+        props.groupCollision === 'all' ? member.sharedDeltaProgress(startRect, memberDelta) : 1;
+      member.translateTo(
+        translate(startRect, memberDelta.left * progress, memberDelta.top * progress)
+      );
     }
     return candidate;
   },
@@ -264,7 +332,13 @@ const context: GroupContext = {
     emit('move-cancel', { leaderId: id, source, rects: records });
   },
   abortDrag: id => {
-    if (session.value?.leaderId === id) session.value = null;
+    const current = session.value;
+    if (!current || current.leaderId !== id) return;
+    // Members stay where the last frame left them (no restore), but consumers that
+    // locked UI on move-start still need a terminating event.
+    const records = memberRecords(current.startRects);
+    session.value = null;
+    emit('move-cancel', { leaderId: id, source: null, rects: records });
   }
 };
 

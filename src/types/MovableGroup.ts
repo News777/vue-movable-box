@@ -31,8 +31,17 @@ export interface GroupMoveStopPayload<T extends object = object> {
 
 export interface GroupMoveCancelPayload<T extends object = object> {
   leaderId: string;
+  /**
+   * Event that triggered the cancel, or null when there was no DOM event: dissolved
+   * sessions (leader unmount, forced abort) and the imperative `cancelInteraction()`
+   * both report null, so `source` alone does not tell a dissolve from a restore.
+   */
   source: Event | null;
-  /** All records carry rect === startRect because a cancel restores the formation. */
+  /**
+   * Escape, pointer and imperative cancels restore the formation, so those records carry
+   * rect === startRect. Dissolved sessions leave members in place: their records keep the
+   * last applied rectangle, which equals startRect only when nothing had moved yet.
+   */
   rects: GroupMemberMoveRecord<T>[];
 }
 

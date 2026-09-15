@@ -586,6 +586,18 @@ const handleActive = (box, rect) => {
 one selected member moves the whole selection by the same offset; dragging an unselected member
 replaces the selection. Give each member a stable `memberId`.
 
+While a group drag session is active, resize/rotate/keyboard gestures on the selected members are
+refused instead of fighting the leader's per-frame updates (the leader's own keyboard is refused
+too, by the ordinary "no keyboard during an interaction" rule), and a member that is already running
+its own gesture stays out of a newly opened session. Imperative calls (`setPosition`, `setSize`,
+`reset` via template refs) are not arbitrated: they are explicit programmatic writes and may be
+overwritten by the leader's next frame during an active session. Changing a member's `memberId`
+moves its registration in place: an active session role and the selection follow the same
+instance to the new id. A `memberId` that another mounted member already owns is refused (the box
+keeps its current identity and does not retry later; when two members mount with the same id the
+second one falls back to an instance identity), so no member can silently take over another one's
+registration.
+
 ```vue
 <script setup>
 import { ref } from 'vue';
@@ -625,14 +637,22 @@ Group semantics:
   `move-start` / `move` / `move-stop` with batch payloads (`{ leaderId, source, rects }`), and
   `move-cancel` restores the whole formation when the leader cancels.
 - Forced aborts (e.g. `disabled` toggled mid-drag) end the session without restore, matching
-  single-box semantics; the same applies when the leader unmounts mid-drag — other members keep
-  their current position.
+  single-box semantics; the same applies when the leader unmounts mid-drag (including a host
+  teardown that unmounts the whole tree) — other members keep their current position. Both paths
+  emit `move-cancel` with `source: null` so a `move-start` always gets a terminating event. Note
+  that `source` is null whenever no DOM event was involved — the imperative `cancelInteraction()`
+  on the leader also reports null while still restoring the formation — so the payload alone
+  cannot tell a dissolve from a restore; dissolved records keep the last applied rectangle (equal
+  to `startRect` only if nothing had moved yet), restored records always equal `startRect`.
+- A selected member that is running its own resize/rotate when a session opens stays in the
+  selection but is left out of that session's payloads (`rects` omit it).
 - A second concurrent pointer cannot hijack an active session. An unselected member may drag
   solo; a member already in the active formation rejects the second interaction so the formation
   remains untouched.
-- Group geometry uses unrotated member rectangles; with `rotate != 0` on members the clamping
-  treats the rectangle as its unrotated form, so a rotated member's visual AABB may extend past
-  the area edge by its rotation overhang.
+- Group geometry uses each member's rotated visual AABB: shared bounds clamp the union of the
+  members' visual contours, and with `sharedBounds: false` every member clamps against its own
+  visual rectangle, so a rotated member never swings outside the area while the formation keeps
+  its shape.
 - Exposed methods: `getSelected()`, `select(ids?)`, `getMemberRects()`.
 
 ### Migration from v3.1.x

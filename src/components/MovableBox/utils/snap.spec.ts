@@ -126,6 +126,8 @@ describe('snap utilities', () => {
 // strategy shows up as half the property reads: one pass reads 8 fields for two
 // targets, two passes read 16.
 
+type CountingRect = { left: number; top: number; width: number; height: number; id?: string };
+
 const countingTarget = (rect: Record<string, number>, reads: string[]) => {
   const proxy: Record<string, unknown> = {};
   for (const key of ['left', 'top', 'width', 'height']) {
@@ -137,7 +139,7 @@ const countingTarget = (rect: Record<string, number>, reads: string[]) => {
       }
     });
   }
-  return proxy as unknown as { left: number; top: number; width: number; height: number; id?: string };
+  return proxy as unknown as CountingRect;
 };
 
 describe('lazy snap strategy evaluation', () => {

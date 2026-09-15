@@ -107,6 +107,24 @@ test.describe('v3.4 group collision fixtures', () => {
     expect(leaderLeft).toBeLessThan(200);
     expect(followerLeft - leaderLeft).toBeCloseTo(160, 3);
   });
+
+  test('aabb-mode formation escapes an obstacle a follower starts inside', async ({ page }) => {
+    await page.goto(fixture('group-all-aabb-escape'));
+    // Regression: the legacy branch fed the overlapping follower to the path interval,
+    // whose entry clamps to 0, so every shared delta collapsed and the formation froze.
+    await dragBox(page, -60, 0);
+
+    expect(await boxLeft(page, 0)).toBeCloseTo(40, 0);
+    expect(await boxLeft(page, 1)).toBeCloseTo(240, 0);
+  });
+
+  test('aabb-mode formation still refuses to deepen a follower overlap', async ({ page }) => {
+    await page.goto(fixture('group-all-aabb-escape'));
+    await dragBox(page, 20, 0);
+
+    expect(await boxLeft(page, 0)).toBeCloseTo(100, 0);
+    expect(await boxLeft(page, 1)).toBeCloseTo(300, 0);
+  });
 });
 
 test.describe('v3.5 diagnostic fixture', () => {

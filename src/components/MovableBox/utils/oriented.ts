@@ -8,8 +8,13 @@
  * - translation uses continuous collision detection: the sweep of the moving rectangle is
  *   intersected with the Minkowski sum of the target and the reflected rectangle, giving
  *   the exact earliest contact along the whole motion segment (not just its endpoints);
- * - size and angle changes walk the whole change path with sampling plus bisection
- *   refinement, because no closed-form solver exists for those sweeps.
+ * - size and angle changes walk the change path with obstacle-aware sampling plus
+ *   bisection refinement, because no closed-form solver exists for those sweeps. Sampling
+ *   density adapts to the path length and the thinnest target, so crossings that span
+ *   more than the per-sample step are caught mid-path; grazing crossings shallower than
+ *   the per-sample step can still slip through (up to the step cap) and stay separated,
+ *   so nothing re-detects them — the cap knowingly trades that residual risk for a
+ *   bounded worst-case cost.
  */
 
 import { angleToRadians, normalizeAngle, type TransformOrigin } from './rotation';
@@ -403,15 +408,47 @@ export const escapeImproves = (fromOverlap: number, toOverlap: number): boolean 
   fromOverlap > 0 ? toOverlap < fromOverlap : toOverlap === 0;
 
 /**
+ * True when `rect` overlaps any target's interior. A cached-AABB broad phase rejects
+ * far-apart targets before the SAT runs: sampling loops probe every target on every step
+ * (up to the step cap), and most probes in a large scene are rectangles that a four-way
+ * comparison can dismiss. Callers that already hold the sample's AABB pass it as `box`
+ * so a probe computes it once. Zero-area targets are skipped, matching
+ * `sweepTranslation` (the SAT separates degenerate targets anyway — pure fast path).
+ */
+export const anyOrientedOverlap = (
+  rect: OrientedRect,
+  targets: OrientedRect[],
+  box: AxisRect = orientedAABB(rect)
+): boolean => {
+  if (targets.length === 0) return false;
+  for (const target of targets) {
+    if (target.width <= 0 || target.height <= 0) continue;
+    const targetBox = orientedAABBCached(target);
+    const overlapX =
+      Math.min(box.left + box.width, targetBox.left + targetBox.width) -
+      Math.max(box.left, targetBox.left);
+    const overlapY =
+      Math.min(box.top + box.height, targetBox.top + targetBox.height) -
+      Math.max(box.top, targetBox.top);
+    if (overlapX <= 0 || overlapY <= 0) continue;
+    if (orientedOverlap(rect, target).overlapping) return true;
+  }
+  return false;
+};
+
+/**
  * Uniform sampling plus bisection refinement over progress [0, 1] against a violation
  * predicate; returns the largest known-safe progress. Progress 0 must be safe; `steps`
- * is clamped to at least 1.
+ * is clamped to at least 1. A non-finite step count is a caller bug and fails closed
+ * (progress 0): `Math.max(1, NaN)` would otherwise skip the walk and report the whole
+ * path as safe.
  */
 export const lastSafeProgress = (
   violates: (progress: number) => boolean,
   steps: number,
   refinements = 20
 ): number => {
+  if (!Number.isFinite(steps)) return 0;
   const count = Math.max(1, Math.floor(steps));
   let safe = 0;
   let upper = 1;
@@ -443,16 +480,78 @@ export const resolvePathProgress = (
   to: OrientedRect,
   targets: OrientedRect[]
 ): number => {
+  if (targets.length === 0) return 1;
   if (isPureTranslation(from, to)) {
     const sweep = sweepTranslation(from, { x: to.left - from.left, y: to.top - from.top }, targets);
     if (!sweep) return 1;
     return Math.max(0, sweep.interval.entry - EPSILON);
   }
-  const violates = (progress: number) => {
-    const sample = interpolateOriented(from, to, progress);
-    return targets.some(target => orientedOverlap(sample, target).overlapping);
-  };
+  const violates = (progress: number) =>
+    anyOrientedOverlap(interpolateOriented(from, to, progress), targets);
   // Never shortcut on a safe endpoint: a size or angle change can sweep through an
   // obstacle mid-path and come out clear on the other side.
-  return lastSafeProgress(violates, 16);
+  return lastSafeProgress(violates, changePathStepCount(from, to, targets));
+};
+
+/** Smallest positive side across targets; Infinity when no target has area. */
+const thinnestTargetSide = (targets: OrientedRect[]): number => {
+  let thinnest = Infinity;
+  for (const target of targets) {
+    if (target.width <= 0 || target.height <= 0) continue;
+    thinnest = Math.min(thinnest, target.width, target.height);
+  }
+  return thinnest;
+};
+
+const MIN_CHANGE_STEPS = 16;
+const MAX_CHANGE_STEPS = 512;
+const FALLBACK_STEP_SPAN = 8;
+
+/**
+ * Uniform-sample count for the change path from `from` to `to`. Every point of the
+ * rectangle is a convex combination of its corners, so a bound on corner travel also
+ * bounds the per-step travel of any point. Interpolation is linear in every field, so a
+ * corner `pos + origin + R(angle)·(local − origin)` moves per unit progress by at most
+ * |Δpos| + |Δorigin| + |Δlocal − Δorigin| + radius·|Δangle| (the pivot vector is linear
+ * in progress, so its norm peaks at an endpoint). The origin terms matter: with a corner
+ * origin a size change moves the far corner twice as far as the size delta alone.
+ * Steps keep the per-step travel below a quarter of the thinnest target side, which
+ * catches crossings that span a comparable fraction of the target; a grazing crossing
+ * whose violation window along the path is thinner than the target's narrowest side
+ * (diagonal sweeps against thin obstacles) can still slip between neighbors. The cap
+ * bounds the worst-case cost for very long paths, where only such shallow crossings get
+ * through.
+ */
+export const changePathStepCount = (
+  from: OrientedRect,
+  to: OrientedRect,
+  targets: OrientedRect[]
+): number => {
+  const radiusAboutOrigin = (rect: OrientedRect, corner: Vec2) =>
+    Math.hypot(corner.x - rect.left - rect.origin.x, corner.y - rect.top - rect.origin.y);
+  const maxRadius = Math.max(
+    ...orientedCorners(from).map(corner => radiusAboutOrigin(from, corner)),
+    ...orientedCorners(to).map(corner => radiusAboutOrigin(to, corner))
+  );
+  const originShiftX = to.origin.x - from.origin.x;
+  const originShiftY = to.origin.y - from.origin.y;
+  const sizeShiftX = to.width - from.width;
+  const sizeShiftY = to.height - from.height;
+  // Local corner offsets are (0|width, 0|height), so their deltas are (0|Δwidth, 0|Δheight).
+  const pivotShift = Math.max(
+    Math.hypot(-originShiftX, -originShiftY),
+    Math.hypot(sizeShiftX - originShiftX, -originShiftY),
+    Math.hypot(-originShiftX, sizeShiftY - originShiftY),
+    Math.hypot(sizeShiftX - originShiftX, sizeShiftY - originShiftY)
+  );
+  const travel =
+    Math.abs(to.left - from.left) +
+    Math.abs(to.top - from.top) +
+    Math.hypot(originShiftX, originShiftY) +
+    pivotShift +
+    maxRadius * angleToRadians(Math.abs(to.angle - from.angle));
+  if (!Number.isFinite(travel) || travel <= 0) return MIN_CHANGE_STEPS;
+  const thinnest = thinnestTargetSide(targets);
+  const stepSpan = Number.isFinite(thinnest) ? Math.max(1, thinnest / 4) : FALLBACK_STEP_SPAN;
+  return Math.min(MAX_CHANGE_STEPS, Math.max(MIN_CHANGE_STEPS, Math.ceil(travel / stepSpan)));
 };

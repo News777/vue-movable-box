@@ -36,3 +36,6 @@ blob-report
 
 # package consumption check scratch dir
 .package-consume-test/
+
+# transient bundled config vite writes while loading vite.config.ts
+vite.config.ts.timestamp-*.mjs

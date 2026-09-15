@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  anyOrientedOverlap,
+  changePathStepCount,
   convexHull,
   escapeImproves,
   interpolateOriented,
@@ -161,6 +163,15 @@ describe('translation sweeps', () => {
     expect(sweep!.targetId).toBe('near');
   });
 
+  it('skips zero-area targets while sweeping', () => {
+    // Same geometry as the contacting case minus the target's height: a degenerate
+    // target never blocks the sweep, matching the aabb pipeline's validation rule.
+    const from = rect(0, 0, 50, 50);
+    const delta = { x: 100, y: 0 };
+    expect(sweepTranslation(from, delta, [rect(60, 0, 50, 0)])).toBeNull();
+    expect(sweepTranslation(from, delta, [rect(60, 0, 50, 1)])).not.toBeNull();
+  });
+
   it('clips a segment against a convex polygon interior', () => {
     const square = [
       { x: 0, y: 0 },
@@ -226,6 +237,57 @@ describe('change path resolution', () => {
     expect(progress).toBe(1);
   });
 
+  it('returns an unblocked path immediately when there are no targets', () => {
+    expect(resolvePathProgress(rect(0, 0, 10, 10), rect(100, 0, 4, 10), [])).toBe(1);
+  });
+
+  it('samples densely enough to catch a thin obstacle on a long change path', () => {
+    // Regression: a fixed 16-sample walk straddled this 10px crossing window (progress
+    // 0.482 to 0.498) and tunneled the narrow box through the 6px target.
+    const from = rect(0, 0, 4, 40);
+    const to = rect(600, 0, 4.5, 41);
+    const target = rect(293, 0, 6, 40);
+    const progress = resolvePathProgress(from, to, [target]);
+    // Contact begins when the moving right edge reaches 293, i.e. left 289: t = 289/600.
+    expect(progress).toBeGreaterThan(0.47);
+    expect(progress).toBeLessThan(0.483);
+    const stopped = interpolateOriented(from, to, progress);
+    expect(orientedOverlap(stopped, target).overlapping).toBe(false);
+  });
+
+  it('densifies sampling when a rotation arc could step over a thin obstacle', () => {
+    // A 1000x8 bar rotating 30 degrees about its center sweeps its ends along a ~500px
+    // radius (~262px of arc); per-sample travel must shrink below a quarter of the 8px
+    // target, far beyond the previous fixed 16 samples.
+    const bar = (angle: number) => rect(0, 0, 1000, 8, angle);
+    const target = rect(1200, -4, 8, 8);
+    expect(changePathStepCount(bar(0), bar(30), [target])).toBeGreaterThan(48);
+    // Short paths keep the cheap baseline.
+    expect(changePathStepCount(rect(0, 0, 40, 40), rect(10, 0, 44, 41), [target])).toBe(16);
+  });
+
+  it('accounts for the transform origin when a size change moves the far corners', () => {
+    // Growing 100x100 -> 300x300 about the top-left corner only carries the pivot term
+    // (~283px of far-corner travel). About the bottom-right corner the origin itself also
+    // travels ~283px, and the bound sums the |Δorigin| and pivot terms conservatively, so
+    // the step count doubles — denser sampling than the geometry strictly needs, bounded
+    // by the step cap; the size deltas alone would have under-counted that case.
+    const target = rect(1000, 0, 8, 8);
+    const topLeft = changePathStepCount(
+      rect(0, 0, 100, 100, 0, { x: 0, y: 0 }),
+      rect(0, 0, 300, 300, 0, { x: 0, y: 0 }),
+      [target]
+    );
+    const bottomRight = changePathStepCount(
+      rect(0, 0, 100, 100, 0, { x: 100, y: 100 }),
+      rect(0, 0, 300, 300, 0, { x: 300, y: 300 }),
+      [target]
+    );
+    expect(topLeft).toBe(Math.ceil(Math.hypot(200, 200) / 2));
+    expect(bottomRight).toBe(Math.ceil((2 * Math.hypot(200, 200)) / 2));
+    expect(bottomRight).toBeGreaterThan(topLeft * 1.9);
+  });
+
   it('interpolates oriented rectangles linearly', () => {
     const from = rect(0, 0, 100, 100, 0, { x: 50, y: 50 });
     const to = rect(10, 20, 200, 300, 90, { x: 100, y: 150 });
@@ -285,5 +347,58 @@ describe('last safe progress walk', () => {
   it('clamps the step count to at least one sample', () => {
     expect(lastSafeProgress(() => false, 0)).toBe(1);
     expect(lastSafeProgress(() => true, 0)).toBe(0);
+  });
+
+  it('fails closed on a non-finite step count', () => {
+    // `Math.max(1, NaN)` is NaN, and a NaN loop bound would skip the walk entirely and
+    // report the whole path as safe — the guard keeps a bad step count at progress 0.
+    expect(lastSafeProgress(() => false, Number.NaN)).toBe(0);
+    expect(lastSafeProgress(() => true, Number.NaN)).toBe(0);
+    expect(lastSafeProgress(() => false, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe('anyOrientedOverlap broad phase', () => {
+  it('matches the per-target SAT verdict for overlapping and separated rectangles', () => {
+    const box = rect(0, 0, 40, 40, 30);
+    const overlapping = rect(30, 10, 20, 20, 70);
+    const separated = rect(200, 200, 20, 20);
+    expect(anyOrientedOverlap(box, [separated, overlapping])).toBe(true);
+    expect(anyOrientedOverlap(box, [separated])).toBe(false);
+    expect(anyOrientedOverlap(box, [])).toBe(false);
+  });
+
+  it('rejects AABB-overlapping rectangles whose rotated contours stay separated', () => {
+    // Two parallel 45-degree bars staggered along their shared axis: their AABBs overlap
+    // (the broad phase passes the pair through) but the contours stay ~7.7px apart, so
+    // the SAT must reject the pair — the pre-filter may never widen the verdict.
+    const bar = rect(0, 0, 100, 10, 45);
+    const target = rect(25, 0, 100, 10, 45);
+    const barBox = orientedAABB(bar);
+    const targetBox = orientedAABB(target);
+    expect(
+      Math.min(barBox.left + barBox.width, targetBox.left + targetBox.width) -
+        Math.max(barBox.left, targetBox.left)
+    ).toBeGreaterThan(0);
+    expect(
+      Math.min(barBox.top + barBox.height, targetBox.top + targetBox.height) -
+        Math.max(barBox.top, targetBox.top)
+    ).toBeGreaterThan(0);
+    expect(anyOrientedOverlap(bar, [target])).toBe(false);
+  });
+
+  it('skips zero-area targets like the translation sweep does', () => {
+    const box = rect(0, 0, 40, 40);
+    const degenerate = rect(10, 10, 20, 0);
+    expect(anyOrientedOverlap(box, [degenerate])).toBe(false);
+    // The SAT already separates degenerate targets, so the skip is a pure fast path.
+    expect(orientedOverlap(box, degenerate).overlapping).toBe(false);
+  });
+
+  it('accepts a precomputed sample AABB without changing the verdict', () => {
+    const box = rect(0, 0, 40, 40, 30);
+    const overlapping = rect(30, 10, 20, 20, 70);
+    expect(anyOrientedOverlap(box, [overlapping], orientedAABB(box))).toBe(true);
+    expect(anyOrientedOverlap(box, [], orientedAABB(box))).toBe(false);
   });
 });

@@ -60,6 +60,29 @@
           {{ obstacle.id }}
         </div>
       </template>
+
+      <!-- mode=group-all-aabb-escape: legacy aabb collision, follower starts inside the wall -->
+      <template v-else-if="mode === 'group-all-aabb-escape'">
+        <MovableGroup :selected="selected" group-collision="all">
+          <VueMovableBox
+            v-for="member in escapeMembers"
+            :key="member.id"
+            :member-id="member.id"
+            v-model="member.rect"
+            :collision-enabled="true"
+            collision-mode="aabb"
+            :collision-targets="escapeObstacles"
+          />
+        </MovableGroup>
+        <div
+          v-for="obstacle in escapeObstacles"
+          :key="obstacle.id"
+          class="obstacle"
+          :style="rectStyle(obstacle)"
+        >
+          {{ obstacle.id }}
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -97,6 +120,18 @@ const members = ref(
 );
 const obstacles = ref<SnapTarget[]>([
   { id: 'wall', left: 380, top: 20, width: 40, height: 200 }
+]);
+
+// m2 (300..420) starts 40px inside the wall (380..480): moving left is an escape the
+// formation must be allowed to make, moving right deepens the overlap and is refused.
+const escapeMembers = ref(
+  ['m1', 'm2'].map((id, index) => ({
+    id,
+    rect: { left: 100 + index * 200, top: 40, width: 120, height: 80, zIndex: 1 } as ExtendsMovableBox
+  }))
+);
+const escapeObstacles = ref<SnapTarget[]>([
+  { id: 'wall', left: 380, top: 20, width: 100, height: 200 }
 ]);
 
 const rectStyle = (rect: SnapTarget) => ({

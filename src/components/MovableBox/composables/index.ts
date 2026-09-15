@@ -5,6 +5,9 @@ export { useSnap } from './useSnap';
 export {
   useCollision,
   directionFromNormal,
+  escapeAllowed,
+  overlapByTarget,
+  separatedTargets,
   type CollisionMode,
   type OrientedCollisionResult
 } from './useCollision';

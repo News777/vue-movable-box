@@ -25,8 +25,11 @@ export const quantizeAngleToward = (from: number, value: number, decimalPlaces =
   const places = Number.isInteger(decimalPlaces) && decimalPlaces >= 0 ? decimalPlaces : 0;
   const factor = 10 ** Math.min(places, 15);
   const scaled = value * factor;
+  // Representation noise (e.g. 179.99999999999997) must not floor away a whole quantum;
+  // Number.EPSILON alone is below the ulp of these magnitudes, so scale it by the value.
+  const tolerance = Math.max(Number.EPSILON, Math.abs(scaled) * Number.EPSILON * 8);
   const quantized =
-    value >= from ? Math.floor(scaled + Number.EPSILON) : Math.ceil(scaled - Number.EPSILON);
+    value >= from ? Math.floor(scaled + tolerance) : Math.ceil(scaled - tolerance);
   return quantized / factor;
 };
 

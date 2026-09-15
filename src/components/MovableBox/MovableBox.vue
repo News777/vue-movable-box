@@ -103,6 +103,9 @@ import {
   useGrid,
   useKeyboard,
   useSnap,
+  escapeAllowed,
+  overlapByTarget,
+  separatedTargets,
   type OrientedCollisionResult
 } from './composables';
 import { asNumber, clamp, sameRect } from './core/box-geometry';
@@ -138,15 +141,23 @@ import type {
 } from '../../types/MovableBox';
 import type { SnapAxes, SnapResult } from './utils/snap';
 import {
-  escapeImproves,
   lastSafeProgress,
+  changePathStepCount,
+  anyOrientedOverlap,
+  escapeImproves,
   orientedAABB,
-  orientedOverlap,
+  orientedAABBCached,
   sweepTranslation,
   translateRect,
+  type AxisRect,
   type OrientedRect
 } from './utils/oriented';
-import { findFirstCollisionPathInterval, isValidCollisionTarget } from './utils/collision';
+import {
+  checkAllCollisions,
+  findFirstCollisionPathInterval,
+  getTotalOverlapArea,
+  isValidCollisionTarget
+} from './utils/collision';
 import { addEvent, deepClone, keepDecimalsToNum, removeEvent, setValUnit, valIsNaN } from './utils';
 
 const props = defineProps({
@@ -603,14 +614,11 @@ const selfOriented = (rect: ExtendsMovableBox, angle = rotationAngle.value): Ori
   orientedFromPlane(numericPlane(rect), angle, props.transformOrigin);
 
 // Target geometry depends on the target's own fields (position, size, angle, origin) and
-// on the container dimensions when unitType is percent. The version counter invalidates
-// the cache on any of those changes; unresolved entries are recomputed on demand.
-let targetGeometryVersion = 0;
+// on the container dimensions when unitType is percent. Any of those changes drops the
+// whole cache; entries are recomputed on demand, and the WeakMap is rebuilt once per
+// generation so stale geometry can never be served after invalidation.
 let targetGeometryCache: WeakMap<SnapTarget, OrientedRect> | null = null;
-// Bumping the version drops every cached entry lazily on next access; the WeakMap is
-// rebuilt once per generation so stale geometry can never be served after invalidation.
 const invalidateTargetGeometry = () => {
-  targetGeometryVersion += 1;
   targetGeometryCache = null;
 };
 watch(
@@ -654,7 +662,9 @@ const visualSnapTargets = () => {
   const scale = getPlaneScale();
   return externalSnapTargets().map(target => {
     if (!normalizeAngle(target.rotate ?? 0)) return target;
-    const box = orientedAABB(orientedSnapTarget(target));
+    // Target oriented rects are cache-stable per generation, so the AABB memoizes too;
+    // uncached trig per target per drag frame is wasted work in large scenes.
+    const box = orientedAABBCached(orientedSnapTarget(target));
     return {
       left: box.left / scale.x,
       top: box.top / scale.y,
@@ -670,25 +680,19 @@ const collisionConstrains = () =>
 
 // Rounding a resolved contact back onto the model grid can leave a sub-unit penetration.
 // Re-verify the rounded rectangle and retreat toward the previous rect until it is safe;
-// if nothing in between is safe, keep the last safe state. When the previous rect already
-// overlapped a target, "safe" means a strictly smaller overlap (gradual escape) instead
-// of full separation.
+// if nothing in between is safe, keep the last safe state. "Safe" uses the same
+// gradual-escape rule as the interaction pipeline: the overlap total must shrink, no
+// single target's penetration may deepen, and no previously separated target may be
+// entered — comparing only totals could accept a rounded rect that newly touches a
+// separated target as long as some other overlap shrank more.
 const roundedSafeRect = (
   resolved: ExtendsMovableBox,
   previous: ExtendsMovableBox,
   targets: OrientedRect[]
 ): ExtendsMovableBox => {
-  const overlapTotal = (rect: ExtendsMovableBox) => {
-    const oriented = selfOriented(rect);
-    let total = 0;
-    for (const target of targets) {
-      const overlap = orientedOverlap(oriented, target);
-      if (overlap.overlapping) total += overlap.overlapArea;
-    }
-    return total;
-  };
-  const previousArea = overlapTotal(previous);
-  const verify = (rect: ExtendsMovableBox) => escapeImproves(previousArea, overlapTotal(rect));
+  const fromAreas = overlapByTarget(selfOriented(previous), targets);
+  const verify = (rect: ExtendsMovableBox) =>
+    escapeAllowed(fromAreas, overlapByTarget(selfOriented(rect), targets));
   if (verify(resolved)) return resolved;
   // Retreat the position only: shrinking width/height here could drop the rectangle
   // below its configured minimum sizes, which position retreat avoids.
@@ -740,10 +744,9 @@ const resolveCollisionPrecise = (
 const rotationCollides = () =>
   props.collisionEnabled && !props.allowOverlap && isPreciseCollision.value;
 
-const rotationOutOfBoundsAt = (angle: number): boolean => {
+const rotationOutOfBoundsAt = (box: AxisRect): boolean => {
   if (!props.limitAreaForParent || !state.parentElement) return false;
   const edges = getAreaEdges();
-  const box = orientedAABB(selfOriented(internalRect.value, angle));
   // The oriented box lives in pixel space; area edges use model units (px or %).
   const scale = getPlaneScale();
   const left = box.left / scale.x;
@@ -762,15 +765,28 @@ const rotationOutOfBoundsAt = (angle: number): boolean => {
 // Targets are resolved once per rotation so sampling (48 steps + bisection) does not
 // rebuild the oriented geometry for every sample.
 const rotationViolatesAt = (angle: number, targets: OrientedRect[]): boolean => {
-  if (rotationOutOfBoundsAt(angle)) return true;
-  if (!rotationCollides() || targets.length === 0) return false;
+  // One sample geometry per probe: the oriented rect and its AABB feed both the bounds
+  // check and the collision broad phase.
   const oriented = selfOriented(internalRect.value, angle);
-  return targets.some(target => orientedOverlap(oriented, target).overlapping);
+  const box = orientedAABB(oriented);
+  if (rotationOutOfBoundsAt(box)) return true;
+  if (!rotationCollides() || targets.length === 0) return false;
+  return anyOrientedOverlap(oriented, targets, box);
 };
 
-// Sample at most every two degrees so even large pointer swings cannot step over an obstacle.
-const rotationStepCount = (from: number, to: number): number =>
-  Math.max(48, Math.ceil(Math.abs(to - from) / 2));
+// Sample at most every two degrees for the visual-AABB bounds sweep, and denser when the
+// corner arc of this box could step over a thin obstacle between uniform samples (a long
+// rotation lever travels many px per degree).
+const rotationStepCount = (from: number, to: number, targets: OrientedRect[]): number =>
+  Math.max(
+    48,
+    Math.ceil(Math.abs(to - from) / 2),
+    changePathStepCount(
+      selfOriented(internalRect.value, from),
+      selfOriented(internalRect.value, to),
+      targets
+    )
+  );
 
 // Walks the angle path with uniform sampling plus bisection refinement and returns the
 // largest safe angle. Start and end being safe does not imply the path is: a corner can
@@ -778,7 +794,7 @@ const rotationStepCount = (from: number, to: number): number =>
 const lastSafeRotationAngle = (from: number, to: number, targets: OrientedRect[]): number => {
   const progress = lastSafeProgress(
     step => rotationViolatesAt(from + (to - from) * step, targets),
-    rotationStepCount(from, to)
+    rotationStepCount(from, to, targets)
   );
   // An unblocked path returns the requested angle verbatim so the commit stays bit-exact.
   return progress === 1 ? to : from + (to - from) * progress;
@@ -793,7 +809,7 @@ const constrainRotation = (from: number, to: number): number => {
   if (rotationViolatesAt(from, targets)) {
     // Already violating (out of bounds or overlapping): scan toward the requested angle
     // for the first fully safe angle so the interaction can recover instead of locking.
-    const steps = rotationStepCount(from, to);
+    const steps = rotationStepCount(from, to, targets);
     for (let index = 1; index <= steps; index += 1) {
       const angle = from + ((to - from) * index) / steps;
       if (!rotationViolatesAt(angle, targets)) {
@@ -804,7 +820,13 @@ const constrainRotation = (from: number, to: number): number => {
     return normalizeAngle(from);
   }
   const lastSafe = lastSafeRotationAngle(from, to, targets);
-  return normalizeAngle(quantizeAngleToward(from, lastSafe, decimalPlaces));
+  const quantized = normalizeAngle(quantizeAngleToward(from, lastSafe, decimalPlaces));
+  // The quantizer clears representation noise with a relative tolerance, so it can step
+  // fractionally past the safe angle; re-verify like the recovery branch does.
+  if (quantized !== lastSafe && rotationViolatesAt(quantized, targets)) {
+    return normalizeAngle(lastSafe);
+  }
+  return quantized;
 };
 
 // Shrinks an over-large rotated rectangle so its AABB fits the area; clamping alone
@@ -1079,8 +1101,10 @@ const clampPosition = (rect: ExtendsMovableBox) => {
 
 // --- MovableGroup integration (inert when no MovableGroup surrounds the box) ---
 const groupContext = inject(GROUP_CONTEXT_KEY, null);
-const memberIdentity =
-  props.memberId || `member-${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
+const fallbackMemberIdentity = `member-${
+  getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)
+}`;
+let memberIdentity = props.memberId || fallbackMemberIdentity;
 let groupDragLeader = false;
 // Progress values are quantized to six decimals (floored, never above the true entry) so
 // the shared group delta lands on the contact position without sweep float residue and
@@ -1089,10 +1113,17 @@ const quantizeProgress = (progress: number) => Math.max(0, Math.floor(progress *
 
 const memberApi: GroupMemberApi = {
   getRect: () => cloneRect(internalRect.value),
-  getVisualRect: () => geometryProbe(cloneRect(internalRect.value)),
+  // Percent-unit geometry needs the container snapshot; resolve it lazily like
+  // getAreaEdges so a member that never interacted still reports a true visual contour
+  // (a zero snapshot would treat percent values as pixels and skew the rotated AABB).
+  getVisualRect: () => {
+    if (!state.parentElement) refreshArea();
+    return geometryProbe(cloneRect(internalRect.value));
+  },
   translateTo: rect => {
     commitRect(rect);
   },
+  isInteracting: () => state.isInteracting,
   // The group constraint loop runs per frame, so re-resolving layout on every call would
   // dominate group drags. Resolve the area lazily once per member, then reuse the
   // snapshot (refreshed at each interaction start by the box itself).
@@ -1103,8 +1134,12 @@ const memberApi: GroupMemberApi = {
   // Largest fraction of a shared group delta this box can absorb without colliding,
   // swept from the member's drag-start rectangle: the group re-applies the limited delta
   // to the start rectangle on every frame, so both sides must reference the same origin.
-  // A start position already overlapping an obstacle only permits escape motions that
-  // strictly shrink the overlap, matching the interaction pipeline's escape rule.
+  // A start position already overlapping an obstacle only permits escape motions under
+  // the same per-target rule as the interaction pipeline: the overlap total must shrink,
+  // no single penetration may deepen, and a previously separated target must not be
+  // entered — trading a big escape for a new entry is a collision, not an escape. An
+  // escape whose path crosses a separated target stops at that target's first contact
+  // instead of jumping the whole formation across it in one frame.
   sharedDeltaProgress: (startRect, delta) => {
     if (!props.collisionEnabled || props.allowOverlap) return 1;
     const scale = getPlaneScale();
@@ -1112,38 +1147,92 @@ const memberApi: GroupMemberApi = {
       const targets = orientedSnapTargets();
       const fromOriented = selfOriented(startRect);
       const deltaPx = { x: delta.left * scale.x, y: delta.top * scale.y };
-      const overlapAt = (rect: OrientedRect) => {
-        let total = 0;
-        for (const target of targets) total += orientedOverlap(rect, target).overlapArea;
-        return total;
-      };
-      const fromOverlap = overlapAt(fromOriented);
-      if (fromOverlap > 0) {
-        return escapeImproves(fromOverlap, overlapAt(translateRect(fromOriented, deltaPx))) ? 1 : 0;
+      const fromAreas = overlapByTarget(fromOriented, targets);
+      if (fromAreas.size > 0) {
+        if (
+          !escapeAllowed(fromAreas, overlapByTarget(translateRect(fromOriented, deltaPx), targets))
+        ) {
+          return 0;
+        }
+        // The endpoint escape passed, but the shared path may still cross a target that
+        // was separated at the drag start: clamp to its first contact like the
+        // interaction pipeline, and refuse the shared delta when that contact would
+        // sit deeper inside the initially overlapped targets than the start.
+        const separated = separatedTargets(targets, fromAreas);
+        if (separated.length === 0) return 1;
+        const sweep = sweepTranslation(fromOriented, deltaPx, separated);
+        if (!sweep) return 1;
+        const progress = quantizeProgress(sweep.interval.entry);
+        return escapeAllowed(
+          fromAreas,
+          overlapByTarget(
+            translateRect(fromOriented, {
+              x: deltaPx.x * progress,
+              y: deltaPx.y * progress
+            }),
+            targets
+          )
+        )
+          ? progress
+          : 0;
       }
       const sweep = sweepTranslation(fromOriented, deltaPx, targets);
       if (!sweep) return 1;
       return quantizeProgress(sweep.interval.entry);
     }
-    const fromPlane = numericPlane(startRect);
-    const toPlane = {
-      ...fromPlane,
-      left: fromPlane.left + delta.left,
-      top: fromPlane.top + delta.top
+    // Legacy (aabb) mode probes the rotated AABB like its interaction pipeline does, and
+    // keeps that pipeline's total-overlap escape rule for a start position already inside
+    // an obstacle: the path interval alone clamps its entry to 0 there, which froze the
+    // whole formation in every direction instead of letting it escape.
+    const obstacles = collisionObstacles();
+    const fromProbe = geometryProbe(startRect);
+    const toProbe = {
+      ...fromProbe,
+      left: fromProbe.left + delta.left,
+      top: fromProbe.top + delta.top
     };
-    const interval = findFirstCollisionPathInterval(fromPlane, toPlane, collisionObstacles());
+    const fromOverlap = getTotalOverlapArea(checkAllCollisions(fromProbe, obstacles));
+    if (fromOverlap > 0) {
+      const toOverlap = getTotalOverlapArea(checkAllCollisions(toProbe, obstacles));
+      return escapeImproves(fromOverlap, toOverlap) ? 1 : 0;
+    }
+    const interval = findFirstCollisionPathInterval(fromProbe, toProbe, obstacles);
     if (!interval) return 1;
     return quantizeProgress(interval.entry);
   }
 };
 onMounted(() => {
-  groupContext?.registerMember(memberIdentity, memberApi);
-  // Container resizes mid-interaction must reach the target-geometry cache and the area
-  // snapshot; jsdom and older environments without ResizeObserver fall back to this.
+  if (groupContext && !groupContext.registerMember(memberIdentity, memberApi)) {
+    // Another mounted member already owns this memberId. Fall back to the instance
+    // identity so both boxes stay addressable instead of one hijacking the other.
+    memberIdentity = fallbackMemberIdentity;
+    groupContext.registerMember(memberIdentity, memberApi);
+  }
+  // Window resizes refresh the area snapshot and the target-geometry cache. A container
+  // that changes size on its own is picked up when this box next starts an interaction
+  // (refreshArea runs before any geometry is probed); a group follower that never
+  // interacts keeps its snapshot until a window resize or its own next gesture.
   if (typeof window !== 'undefined') {
     window.addEventListener('resize', refreshArea);
   }
 });
+// The group addresses members by identity, so a memberId prop change moves the
+// registration in place — session role and selection follow — instead of leaving the
+// box registered under its previous id. A value another member owns is refused and
+// the box keeps its current identity.
+watch(
+  () => props.memberId,
+  () => {
+    const next = props.memberId || fallbackMemberIdentity;
+    if (next === memberIdentity || !groupContext) return;
+    if (groupContext.renameMember(memberIdentity, next, memberApi)) {
+      memberIdentity = next;
+    } else if (!groupContext.hasMember(memberIdentity)) {
+      // Not registered yet (the prop changed before mount): onMounted registers `next`.
+      memberIdentity = next;
+    }
+  }
+);
 
 const externalSnapTargets = () =>
   groupContext
@@ -1964,10 +2053,16 @@ const startInteraction = (source: PointerEvent, handle: HandlePosition | null) =
   }
 
   groupDragLeader = false;
-  if (!handle && groupContext) {
-    const disposition = groupContext.beginDrag(memberIdentity, source);
-    if (disposition === 'blocked') return;
-    groupDragLeader = disposition === 'group';
+  if (groupContext) {
+    if (handle) {
+      // A resize on a formation member would be overwritten by the leader's per-frame
+      // translateTo; block it while the member belongs to an active session.
+      if (!groupContext.beginMemberInteraction(memberIdentity)) return;
+    } else {
+      const disposition = groupContext.beginDrag(memberIdentity, source);
+      if (disposition === 'blocked') return;
+      groupDragLeader = disposition === 'group';
+    }
   }
 
   refreshArea();
@@ -2030,6 +2125,8 @@ const handleRotationPointerDown = (source: PointerEvent) => {
   if (props.disabled || props.initRect || !props.rotatable) return;
   if (state.isInteracting) return;
   if (props.canRotate?.(cloneRect(internalRect.value)) === false) return;
+  // Rotating a formation member mid-session would fight the leader's translateTo.
+  if (groupContext && !groupContext.beginMemberInteraction(memberIdentity)) return;
   refreshArea();
   const origin = rotationOriginInViewport();
   if (!origin) return;
@@ -2104,6 +2201,9 @@ function endInteraction(source: PointerEvent) {
 }
 
 const moveWithKeyboard = (direction: DragDirection, distance: number) => {
+  // A solo keyboard nudge on a formation member would be snapped back by the leader's
+  // next frame; refuse it before any layout work while the member belongs to a session.
+  if (groupContext && !groupContext.beginMemberInteraction(memberIdentity)) return;
   refreshArea();
   const previous = cloneRect(internalRect.value);
   if (props.canDrag?.(cloneRect(previous)) === false) return;
@@ -2130,6 +2230,9 @@ const moveWithKeyboard = (direction: DragDirection, distance: number) => {
 
 const resizeWithKeyboard = (handle: HandlePosition, direction: DragDirection, distance: number) => {
   if (!isResizable.value || !isHandleAllowed(handle)) return;
+  // Resizing a formation member mid-session would fight the leader's translateTo;
+  // refuse it before any layout work.
+  if (groupContext && !groupContext.beginMemberInteraction(memberIdentity)) return;
   refreshArea();
   const previous = cloneRect(internalRect.value);
   if (props.canResize?.(cloneRect(previous), handle) === false) return;
@@ -2278,6 +2381,10 @@ const handleRotationKeyDown = (event: KeyboardEvent) => {
   if (props.canRotate?.(cloneRect(internalRect.value)) === false) return;
   event.preventDefault();
   event.stopPropagation();
+  // Keyboard rotation on a formation member mid-session would fight the leader's
+  // translateTo. The default is already suppressed: the slider owns these keys whether
+  // the gesture is refused or not, so Home/Arrows must not scroll the page instead.
+  if (groupContext && !groupContext.beginMemberInteraction(memberIdentity)) return;
   refreshArea();
   const oldValue = internalRotation.value;
   const step = normalizeKeyboardStep(props.keyboardStep) * (event.shiftKey ? 10 : 1);

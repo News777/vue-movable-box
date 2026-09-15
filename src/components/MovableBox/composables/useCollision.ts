@@ -94,6 +94,15 @@ const roundedNormal = (normal: Vec2): Vec2 => ({
   y: Math.round(normal.y * 1e4) / 1e4
 });
 
+/**
+ * Retreat fraction along the incoming motion that keeps a resolved contact strictly
+ * outside the obstacle. The leftover gap must stay sub-pixel whatever the frame's
+ * travel: a purely proportional retreat leaves a visible seam on the large single-frame
+ * deltas a dropped frame can produce, so the fraction is capped at an absolute 0.5px.
+ */
+const contactRetreat = (travel: number, entry: number): number =>
+  Math.min(1e-3, 0.5 / Math.max(1, travel), entry);
+
 interface CollisionSummary {
   results: OrientedCollisionResult[];
   dominant: OrientedCollisionResult | null;
@@ -107,7 +116,10 @@ const summarize = (results: OrientedCollisionResult[]): CollisionSummary => ({
 });
 
 /** Overlap area per still-overlapping target, keyed by the target's array index. */
-const overlapByTarget = (rect: OrientedRect, targets: OrientedRect[]): Map<number, number> => {
+export const overlapByTarget = (
+  rect: OrientedRect,
+  targets: OrientedRect[]
+): Map<number, number> => {
   const areas = new Map<number, number>();
   targets.forEach((target, index) => {
     if (target.width <= 0 || target.height <= 0) return;
@@ -121,7 +133,10 @@ const overlapByTarget = (rect: OrientedRect, targets: OrientedRect[]): Map<numbe
  * Gradual-escape rule for an initially overlapping state: total overlap must shrink,
  * no existing penetration may deepen, and no previously separated target may be entered.
  */
-const escapeAllowed = (fromAreas: Map<number, number>, toAreas: Map<number, number>): boolean => {
+export const escapeAllowed = (
+  fromAreas: Map<number, number>,
+  toAreas: Map<number, number>
+): boolean => {
   let fromTotal = 0;
   fromAreas.forEach(area => {
     fromTotal += area;
@@ -134,6 +149,15 @@ const escapeAllowed = (fromAreas: Map<number, number>, toAreas: Map<number, numb
   }
   return escapeImproves(fromTotal, toTotal);
 };
+
+/**
+ * Targets the box did not overlap at the start of the motion; index keys match
+ * `overlapByTarget`.
+ */
+export const separatedTargets = (
+  targets: OrientedRect[],
+  fromAreas: Map<number, number>
+): OrientedRect[] => targets.filter((_, index) => !fromAreas.has(index));
 
 interface OrientedResolution {
   accepted: boolean;
@@ -208,11 +232,58 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
       // Initial overlap: allow gradual escape only, never a deeper penetration and
       // never entering a target that was previously separated.
       const allowed = escapeAllowed(fromAreas, overlapByTarget(to, targets));
+      if (!allowed) {
+        return { accepted: false, rect: from, progress: 0, ...candidateState };
+      }
+      // The endpoint escapes, but the motion may still cross a target that was
+      // separated at the start: sweep those targets and clamp to the first contact,
+      // exactly like the separated-start path below, instead of applying the whole
+      // delta in one frame.
+      const delta: Vec2 = { x: to.left - from.left, y: to.top - from.top };
+      const sweep =
+        delta.x === 0 && delta.y === 0
+          ? null
+          : sweepTranslation(from, delta, separatedTargets(targets, fromAreas));
+      if (!sweep) {
+        return { accepted: true, rect: to, progress: 1, ...candidateState };
+      }
+      const retreat = contactRetreat(Math.hypot(delta.x, delta.y), sweep.interval.entry);
+      const contactProgress = Math.max(0, sweep.interval.entry - retreat);
+      const contact = translateRect(from, {
+        x: delta.x * contactProgress,
+        y: delta.y * contactProgress
+      });
+      // Report from just past the contact: the frame was stopped by the separated
+      // target, even while the box still overlaps where it started. The dominant entry
+      // is the largest overlap, which can be the start overlap rather than the blocker.
+      const witness = translateRect(from, {
+        x: delta.x * (sweep.interval.entry + (sweep.interval.exit - sweep.interval.entry) * 0.001),
+        y: delta.y * (sweep.interval.entry + (sweep.interval.exit - sweep.interval.entry) * 0.001)
+      });
+      const witnessState = evaluateOriented(witness, targets);
+      // The contact may sit deeper inside the initially overlapped targets than the
+      // start — escape overlap is not monotone along the path — and materializing a
+      // deeper state is exactly what the per-target rule forbids. Refuse the frame in
+      // that case: only the endpoints of the clamped motion ever materialize, so the
+      // mid-path deepening of a through-exit stays acceptable while a deeper landing
+      // does not. The refused frame still reports the blocking contact — spreading the
+      // cleared endpoint's empty state would claim "no collision" on a stuck box.
+      if (!escapeAllowed(fromAreas, overlapByTarget(contact, targets))) {
+        const rejectState =
+          witnessState.results.length > 0 ? witnessState : evaluateOriented(from, targets);
+        return { accepted: false, rect: from, progress: 0, ...rejectState };
+      }
+      const finalState =
+        witnessState.results.length > 0 ? witnessState : evaluateOriented(contact, targets);
+      // Edge note: for an extremely thin blocking target the 0.001 witness factor can
+      // land below the SAT epsilon, and a contact already clear of every start overlap
+      // then reports no collision on a stopped frame — same edge as the separated-start
+      // path's flush-contact reporting.
       return {
-        accepted: allowed,
-        rect: to,
-        progress: 1,
-        ...candidateState
+        accepted: !sameOrientedPosition(contact, from),
+        rect: contact,
+        progress: contactProgress,
+        ...finalState
       };
     }
 
@@ -229,8 +300,8 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
     const { interval } = sweep;
     // Retreat a hair along the incoming motion so the contact position sits strictly
     // outside the obstacle: sliding sweeps that start exactly on the contact boundary
-    // are numerically ambiguous, and the sub-pixel gap disappears when rounding.
-    const retreat = Math.min(1e-3, interval.entry);
+    // are numerically ambiguous, and the gap stays sub-pixel after rounding.
+    const retreat = contactRetreat(Math.hypot(delta.x, delta.y), interval.entry);
     const contact = translateRect(from, {
       x: delta.x * (interval.entry - retreat),
       y: delta.y * (interval.entry - retreat)
@@ -251,7 +322,7 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
     const slideResult = (origin: OrientedRect, direction: Vec2): OrientedRect => {
       const slide = sweepTranslation(origin, direction, targets);
       if (!slide) return translateRect(origin, direction);
-      const retreatT = Math.min(1e-3, slide.interval.entry);
+      const retreatT = contactRetreat(Math.hypot(direction.x, direction.y), slide.interval.entry);
       return translateRect(origin, {
         x: direction.x * (slide.interval.entry - retreatT),
         y: direction.y * (slide.interval.entry - retreatT)
@@ -320,11 +391,37 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
     const fromAreas = overlapByTarget(from, targets);
     if (fromAreas.size > 0) {
       const allowed = escapeAllowed(fromAreas, overlapByTarget(to, targets));
+      if (!allowed) {
+        return { accepted: false, rect: from, progress: 0, ...candidateState };
+      }
+      // The endpoint escapes, but the change path (resize or rotation sweep) may still
+      // cross a target that was separated at the start: clamp to the first contact
+      // along the interpolation path, mirroring the translation escape clamp.
+      const separated = separatedTargets(targets, fromAreas);
+      const progress = separated.length > 0 ? resolvePathProgress(from, to, separated) : 1;
+      if (progress >= 1) {
+        return { accepted: true, rect: to, progress: 1, ...candidateState };
+      }
+      const resolved = interpolateOriented(from, to, progress);
+      // Prefer the just-past-contact witness so the reported collision is the target
+      // that stopped the frame, not the overlap the box started with.
+      const witness = interpolateOriented(from, to, progress + (1 - progress) * 0.001);
+      const witnessState = evaluateOriented(witness, targets);
+      // Same no-deepening guard as the translation escape: a clamped landing deeper
+      // inside the initially overlapped targets than the start is refused, reporting
+      // the blocking contact rather than the cleared endpoint's empty state.
+      if (!escapeAllowed(fromAreas, overlapByTarget(resolved, targets))) {
+        const rejectState =
+          witnessState.results.length > 0 ? witnessState : evaluateOriented(from, targets);
+        return { accepted: false, rect: from, progress: 0, ...rejectState };
+      }
+      const finalState =
+        witnessState.results.length > 0 ? witnessState : evaluateOriented(resolved, targets);
       return {
-        accepted: allowed,
-        rect: to,
-        progress: 1,
-        ...candidateState
+        accepted: progress > 0,
+        rect: resolved,
+        progress,
+        ...finalState
       };
     }
 
@@ -366,6 +463,9 @@ export function useCollision(getOptions: () => UseCollisionOptions) {
     const previousResults = checkAllCollisions(previous, targets);
     const previousOverlap = getTotalOverlapArea(previousResults);
     if (previousOverlap > 0) {
+      // Legacy mode keeps the pre-v3.2 total-only escape rule on purpose: this pipeline
+      // exists so `collisionMode="aabb"` preserves the old behavior. The precise pipeline
+      // above uses the stricter per-target `escapeAllowed` (no new targets, no deepening).
       return {
         accepted: escapeImproves(previousOverlap, candidateState.totalOverlapArea),
         rect: candidate,

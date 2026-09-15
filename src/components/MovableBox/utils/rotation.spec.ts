@@ -143,4 +143,13 @@ describe('quantizeAngleToward', () => {
     expect(quantizeAngleToward(0, 16.678, 2)).toBe(16.67);
     expect(quantizeAngleToward(30, 16.678, 2)).toBe(16.68);
   });
+
+  it('clears representation noise whose ulp exceeds Number.EPSILON', () => {
+    // 179.99999999999997 is a few ulps below 180; a bare Number.EPSILON nudge is below
+    // the ulp at this magnitude and used to floor away a whole degree.
+    expect(quantizeAngleToward(179, 179.99999999999997)).toBe(180);
+    expect(quantizeAngleToward(181, 179.99999999999997)).toBe(180);
+    // The ceil direction (value below from) must clear noise the same way.
+    expect(quantizeAngleToward(-175, -179.99999999999997)).toBe(-180);
+  });
 });
